@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+dev-dist/
 coverage/
 src-tauri/binaries/
 src-tauri/runtime/

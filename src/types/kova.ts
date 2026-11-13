@@ -1,4 +1,4 @@
-export type AppTab = 'workstation' | 'models' | 'roles' | 'architecture' | 'settings';
+export type AppTab = 'workstation' | 'models' | 'roles' | 'settings';
 export type UiStylePreset = 'cline-vscode' | 'mica-windows' | 'cyber-terminal';
 export type SettingsSectionId =
   | 'ui-chat'
@@ -8,10 +8,22 @@ export type SettingsSectionId =
   | 'gateway'
   | 'engine-paths'
   | 'ssh-github'
-  | 'github-download';
+  | 'github-download'
+  | 'updates';
 export type AgentMode = 'plan' | 'act';
 export type GpuBackend = 'auto' | 'cuda' | 'vulkan' | 'cpu';
 export type ServerStatus = 'ready' | 'generating' | 'loading' | 'stopped' | 'error';
+export type AgentActivity = 'idle' | 'thinking' | 'reading' | 'editing' | 'writing' | 'terminal';
+export type UpdateCheckStatus = 'idle' | 'checking' | 'current' | 'available' | 'error';
+
+export interface AppUpdateRelease {
+  version: string;
+  releaseUrl: string;
+  downloadUrl: string;
+  notes: string;
+  publishedAt: string;
+  isNewer: boolean;
+}
 
 export type RolePersonaKind = 'architect' | 'developer' | 'reviewer' | 'qa' | 'custom';
 export type PermissionPolicy = 'allow' | 'ask' | 'deny';
@@ -411,6 +423,7 @@ export interface AgentMessage {
   timestamp: string;
   content: string;
   readFiles?: string[];
+  webSources?: Array<{ title: string; url: string }>;
   diff?: DiffProposal;
   command?: CommandProposal;
   checkpointId?: string;

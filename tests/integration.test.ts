@@ -180,6 +180,25 @@ test('2. Local desktop origins can access the API without opening it to remote o
   assert.equal(rejected.status, 403);
 });
 
+test('2a. Browser tools only accept public HTTPS pages', async () => {
+  const localAddress = await jsonReq<{ ok: boolean; error: string }>(
+    `/api/browser/read?url=${encodeURIComponent('https://127.0.0.1/')}`,
+  );
+  assert.equal(localAddress.status, 400);
+  assert.equal(localAddress.data.ok, false);
+  assert.match(localAddress.data.error, /локальную|приватную/i);
+
+  const insecureAddress = await jsonReq<{ ok: boolean; error: string }>(
+    `/api/browser/read?url=${encodeURIComponent('http://example.com/')}`,
+  );
+  assert.equal(insecureAddress.status, 400);
+  assert.match(insecureAddress.data.error, /HTTPS/i);
+
+  const emptySearch = await jsonReq<{ ok: boolean; error: string }>('/api/browser/search');
+  assert.equal(emptySearch.status, 400);
+  assert.match(emptySearch.data.error, /поисковый запрос/i);
+});
+
 test('3. Real streaming download, pause, HTTP Range resume, SHA256 verify, corrupt block, and disk delete', async () => {
   throttleFirstChunk = true;
   rangeRequestSeen = false;
@@ -338,7 +357,7 @@ test('4. Mandatory folder validation, real command execution, action log, /undo,
     assert.equal(writeRes.data.ok, true);
     assert.equal(fs.existsSync(path.join(workdir, 'hello.py')), true);
 
-    // Execute Node.js, which is already required to run Kova Studio.
+    // Execute Node.js, which is already required to run ONE CORE AI.
     const execRes = await jsonReq<{ ok: boolean; stdout: string; exitCode: number }>(
       `/api/projects/${encodeURIComponent(projectId)}/exec`,
       {
@@ -349,6 +368,53 @@ test('4. Mandatory folder validation, real command execution, action log, /undo,
     assert.equal(execRes.status, 200);
     assert.equal(execRes.data.exitCode, 0);
     assert.match(execRes.data.stdout, /Hello from Kova/);
+
+    const proposedCommand = `node -e "require('fs').writeFileSync('agent-command-ran.txt','ran')"`;
+    const modelServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ reply: 'Нужна команда.', runCommand: proposedCommand }) } }],
+        }),
+      );
+    });
+    await new Promise<void>((resolve) => modelServer.listen(0, '127.0.0.1', resolve));
+    const modelAddress = modelServer.address();
+    assert.ok(modelAddress && typeof modelAddress === 'object');
+    let taskRes: { status: number; data: { ok: boolean; proposedCommand?: string; commandResult?: unknown } };
+    try {
+      taskRes = await jsonReq<{ ok: boolean; proposedCommand?: string; commandResult?: unknown }>(
+        `/api/projects/${encodeURIComponent(projectId)}/task`,
+        {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'Покажи команду для выполнения',
+          mode: 'act',
+          provider: {
+            baseUrl: `http://127.0.0.1:${modelAddress.port}/v1`,
+            model: 'test-model',
+          },
+        }),
+        },
+      );
+    } finally {
+      await new Promise<void>((resolve) => modelServer.close(() => resolve()));
+    }
+    assert.equal(taskRes.status, 200);
+    assert.equal(taskRes.data.proposedCommand, proposedCommand);
+    assert.equal(taskRes.data.commandResult, undefined);
+    assert.equal(fs.existsSync(path.join(workdir, 'agent-command-ran.txt')), false);
+
+    const approvedCommand = await jsonReq<{ ok: boolean; exitCode: number }>(
+      `/api/projects/${encodeURIComponent(projectId)}/exec`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ command: taskRes.data.proposedCommand }),
+      },
+    );
+    assert.equal(approvedCommand.status, 200);
+    assert.equal(approvedCommand.data.exitCode, 0);
+    assert.equal(fs.existsSync(path.join(workdir, 'agent-command-ran.txt')), true);
 
     // Verify action log contains write & command entries
     const logsRes = await jsonReq<{

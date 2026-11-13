@@ -723,7 +723,7 @@ export const OpenKovaSettingsSections: React.FC<Props> = ({ section }) => {
             <span>Шлюз мессенджеров (Telegram, Discord, Slack)</span>
           </h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Управляйте агентом Kova Studio с телефона или командных чатов без платных шлюзов и ограничений.
+            Управляйте агентом ONE CORE AI с телефона или командных чатов без платных шлюзов и ограничений.
           </p>
         </div>
 

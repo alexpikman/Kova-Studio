@@ -1,12 +1,12 @@
-# Kova Studio — Автономный Windows ИИ-агент в стиле Cline
+# ONE CORE AI — локальный Windows ИИ-агент
 
-**Kova Studio** — это десктопный ИИ-агент для программирования под Windows 10/11 (на базе **Tauri 2.0 + WebView2** и встроенного движка **`llama.cpp` / `llama-server.exe`**), вдохновлённый **Cline** и расширенный настраиваемыми областями интерфейса, ролевой системой и автономным менеджером локальных моделей GGUF — без зависимости от Ollama и Python.
+**ONE CORE AI** — это десктопный ИИ-агент для Windows 10/11 на базе **Tauri 2.0 + WebView2** и `llama.cpp` / `llama-server.exe`. Он помогает работать с локальными проектами, моделями GGUF, файлами, Git и терминалом.
 
 Репозиторий проекта: **[`https://github.com/alexpikman/Kova-Studio`](https://github.com/alexpikman/Kova-Studio)**
 
 ---
 
-## Что умеет Kova Studio
+## Что умеет ONE CORE AI
 
 - **Cline-подобная рабочая станция (`Plan` / `Act` / `Код`)**:
   - 3-колоночный интерфейс (дерево проекта, локальные модели и история сессий слева; агентский чат с встроенными Git-диффами, терминалом PowerShell и Checkpoints SQLite в центре; анимированный векторный персонаж, телеметрия VRAM/RAM и активный контекст справа).
@@ -39,11 +39,11 @@ irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/instal
 ```
 
 **Что сделает скрипт [`scripts/install.ps1`](https://github.com/alexpikman/Kova-Studio/blob/main/scripts/install.ps1):**
-1. Создаст каталоги `%APPDATA%\com.kovastudio.app\models\` и `%LOCALAPPDATA%\KovaStudio\`.
+1. Создаст каталоги `%APPDATA%\com.kovastudio.app\models\` и `%LOCALAPPDATA%\KovaStudio\`. Эти внутренние пути сохранены для совместимости с уже установленными версиями.
 2. Установит **Microsoft Edge WebView2 Runtime** (если ещё не установлен).
 3. Автоматически определит GPU (**NVIDIA CUDA** / **Vulkan** / **CPU AVX2**) и скачает `llama-server.exe` из официальных релизов `ggml-org/llama.cpp`.
 4. Проверит **[GitHub Releases](https://github.com/alexpikman/Kova-Studio/releases)** и **GitHub Actions** на наличие готового `.exe` (NSIS) или `.msi` (WiX) установщика — и сразу установит его без локальной компиляции MSVC (`8012`).
-5. Если готовый `.exe`/`.msi` релиз ещё не опубликован — скачает архив репозитория с GitHub (без `git` и без `MSVC`), установит зависимости, создаст ярлык **`Kova Studio.cmd`** на рабочем столе и запустит приложение в браузере (`http://localhost:3000`, с поддержкой установки как **PWA**).
+5. Если готовый `.exe`/`.msi` релиз ещё не опубликован — скачает архив репозитория с GitHub (без `git` и без `MSVC`), установит зависимости, создаст ярлык **`ONE CORE AI.cmd`** на рабочем столе и запустит приложение в браузере (`http://localhost:3000`, с поддержкой установки как **PWA**).
 
 ---
 

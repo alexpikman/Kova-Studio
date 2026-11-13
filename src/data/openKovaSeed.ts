@@ -190,7 +190,7 @@ export const INITIAL_MEMORY_DOCS: AgentMemoryDoc[] = [
     filename: 'SOUL.md',
     title: 'Характер и стиль агента',
     description: 'Вдохновлено OpenKova SOUL.md: краткость, точность и фокус на рабочем коде без воды.',
-    content: `Ты — автономный инженерный агент Kova Studio (Cline + OpenKova).
+    content: `Ты — автономный инженерный агент ONE CORE AI (Cline + OpenKova).
 Отвечай прямо, по существу, без лишних вводных фраз.
 Перед правкой кода в режиме Act всегда сохраняй Checkpoint и объясняй проверяемый результат.
 Предлагай сохранять удачные решения в библиотеку навыков SKILL.md.`,
@@ -287,6 +287,16 @@ export interface SlashCommandDef {
 
 export const OPENKOVA_SLASH_COMMANDS: SlashCommandDef[] = [
   {
+    command: '/web',
+    syntax: '/web <поисковый запрос>',
+    description: 'Найти и прочитать публичные веб-страницы без выполнения действий на сайтах',
+  },
+  {
+    command: '/browse',
+    syntax: '/browse <HTTPS-адрес>',
+    description: 'Прочитать текст публичной HTTPS-страницы',
+  },
+  {
     command: '/run',
     syntax: '/run <команда терминала>',
     description: 'Реально выполнить команду в папке активного проекта',
@@ -342,7 +352,7 @@ export function buildGatewayStartScript(
   const dc = gateways.find((g) => g.id === 'discord');
   const sl = gateways.find((g) => g.id === 'slack');
 
-  return `# Kova Studio — Запуск бесплатного шлюза мессенджеров (OpenKova Gateway Bridge)
+  return `# ONE CORE AI — Запуск бесплатного шлюза мессенджеров (OpenKova Gateway Bridge)
 $ErrorActionPreference = "Stop"
 
 $env:KOVA_PROVIDER_URL = "${activeProvider?.baseUrl ?? 'http://127.0.0.1:8080/v1'}"

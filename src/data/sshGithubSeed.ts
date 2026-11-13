@@ -8,7 +8,7 @@ import type {
 export const INITIAL_SSH_KEYS: SshKeyProfile[] = [
   {
     id: 'ssh-key-kova-ed25519',
-    name: 'Kova Studio Primary (GitHub & Deploy)',
+    name: 'ONE CORE AI Primary (GitHub & Deploy)',
     algorithm: 'ed25519',
     comment: 'kova-studio@windows-workstation',
     privateKeyPath: '%USERPROFILE%\\.ssh\\id_ed25519_kova',
@@ -119,7 +119,7 @@ export function buildWindowsSshGithubScript(
       ? `git@github.com:${github.repoOwnerSlashName}.git`
       : `https://github.com/${github.repoOwnerSlashName}.git`;
 
-  return `# Kova Studio — Настройка SSH и GitHub на Windows 10/11
+  return `# ONE CORE AI — Настройка SSH и GitHub на Windows 10/11
 $ErrorActionPreference = "Stop"
 
 # 1. Каталог ~/.ssh и генерация ключа (если отсутствует)

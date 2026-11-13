@@ -1,10 +1,11 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import type { RolePersonaKind, ServerStatus } from '../../types/kova';
+import type { AgentActivity, RolePersonaKind, ServerStatus } from '../../types/kova';
 import { cn } from '../../utils/cn';
 
 interface ModelMascotProps {
   status: ServerStatus;
+  activity?: AgentActivity;
   persona: RolePersonaKind;
   roleName: string;
   modelName?: string;
@@ -31,6 +32,7 @@ const STATUS_TEXT: Record<ServerStatus, string> = {
 
 export const ModelMascot: React.FC<ModelMascotProps> = ({
   status,
+  activity = 'idle',
   persona,
   roleName,
   modelName,
@@ -38,10 +40,33 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
   compact = false,
   onClick,
 }) => {
-  const accent = status === 'error' ? '#EF4444' : status === 'stopped' ? '#71717A' : PERSONA_COLORS[persona];
-  const isSleeping = status === 'stopped';
-  const isGenerating = status === 'generating';
+  const isSleeping = status === 'stopped' && activity === 'idle';
+  const accent =
+    status === 'error' && activity === 'idle'
+      ? '#EF4444'
+      : isSleeping
+        ? '#71717A'
+        : PERSONA_COLORS[persona];
+  const isGenerating =
+    activity === 'writing' || (activity === 'idle' && status === 'generating');
   const isLoading = status === 'loading';
+  const isWorking = activity !== 'idle' && status !== 'error';
+  const gaze =
+    activity === 'reading'
+      ? [0, 1.5, -1.5, 0]
+      : activity === 'thinking'
+        ? [0, -1, 1, 0]
+        : activity === 'editing'
+          ? [0, 0.8, 0]
+          : 0;
+  const activityText: Record<AgentActivity, string> = {
+    idle: STATUS_TEXT[status],
+    thinking: 'Обдумывает задачу',
+    reading: 'Читает файлы и источники',
+    editing: 'Редактирует проект',
+    writing: 'Пишет ответ',
+    terminal: 'Работает в терминале',
+  };
 
   return (
     <button
@@ -60,14 +85,14 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
           fill="none"
           aria-label={`Персонаж модели в роли ${roleName}`}
           animate={
-            isGenerating
+            isGenerating || isWorking
               ? { y: [0, -2.5, 0] }
               : isSleeping
                 ? { y: [0, 1, 0] }
                 : { y: [0, -1.5, 0] }
           }
           transition={{
-            duration: isGenerating ? 0.65 : 2.8,
+            duration: isGenerating || isWorking ? 0.8 : 2.8,
             repeat: Infinity,
             ease: 'easeInOut',
           }}
@@ -81,7 +106,7 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
             strokeWidth="1.2"
             strokeDasharray={isLoading ? '10 6' : 'none'}
             opacity={isSleeping ? 0.12 : 0.28}
-            animate={isLoading ? { rotate: 360 } : { scale: isGenerating ? [1, 1.05, 1] : 1 }}
+            animate={isLoading ? { rotate: 360 } : { scale: isGenerating || isWorking ? [1, 1.05, 1] : 1 }}
             transition={
               isLoading
                 ? { duration: 2.2, repeat: Infinity, ease: 'linear' }
@@ -98,7 +123,7 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
             r="3.2"
             fill={accent}
             animate={
-              isGenerating
+              isGenerating || isWorking
                 ? { opacity: [1, 0.35, 1], scale: [1, 1.25, 1] }
                 : { opacity: isSleeping ? 0.3 : 0.9 }
             }
@@ -150,13 +175,13 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
                 rx="2.7"
                 fill={accent}
                 animate={
-                  isGenerating
-                    ? { scaleY: [1, 0.7, 1], x: [0, 1.5, -1, 0] }
+                  isGenerating || isWorking
+                    ? { scaleY: [1, 0.7, 1], x: gaze }
                     : { scaleY: [1, 1, 0.15, 1] }
                 }
                 transition={
-                  isGenerating
-                    ? { duration: 0.9, repeat: Infinity }
+                  isGenerating || isWorking
+                    ? { duration: activity === 'reading' ? 1.1 : 0.9, repeat: Infinity }
                     : { duration: 4.2, repeat: Infinity, times: [0, 0.92, 0.96, 1] }
                 }
                 style={{ originY: '36px' }}
@@ -169,13 +194,13 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
                 rx="2.7"
                 fill={accent}
                 animate={
-                  isGenerating
-                    ? { scaleY: [1, 0.7, 1], x: [0, 1.5, -1, 0] }
+                  isGenerating || isWorking
+                    ? { scaleY: [1, 0.7, 1], x: gaze }
                     : { scaleY: [1, 1, 0.15, 1] }
                 }
                 transition={
-                  isGenerating
-                    ? { duration: 0.9, repeat: Infinity }
+                  isGenerating || isWorking
+                    ? { duration: activity === 'reading' ? 1.1 : 0.9, repeat: Infinity }
                     : { duration: 4.2, repeat: Infinity, times: [0, 0.92, 0.96, 1] }
                 }
                 style={{ originY: '36px' }}
@@ -239,7 +264,7 @@ export const ModelMascot: React.FC<ModelMascotProps> = ({
           </span>
         </div>
         <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
-          {STATUS_TEXT[status]}
+          {activityText[activity]}
         </div>
         {modelName && !compact && (
           <div className="font-mono text-[10.5px] text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">

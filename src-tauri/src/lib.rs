@@ -221,7 +221,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Kova Studio Tauri application")
+        .expect("error while building ONE CORE AI Tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
                 if let Some(runtime) = app_handle.try_state::<BackendRuntime>() {

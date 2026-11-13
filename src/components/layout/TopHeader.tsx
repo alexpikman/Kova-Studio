@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Bell, CheckCheck, Monitor, MonitorDown, Moon, Pause, Power, Settings, Sun } from 'lucide-react';
+import { Bell, CheckCheck, Download, Monitor, MonitorDown, Moon, Pause, Power, Settings, Sun } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useKovaStore } from '../../store/useKovaStore';
 import type { AppTab } from '../../types/kova';
@@ -11,7 +11,6 @@ const NAV_ITEMS: { id: AppTab; label: string }[] = [
   { id: 'workstation', label: 'Рабочая станция' },
   { id: 'models', label: 'Модели GGUF' },
   { id: 'roles', label: 'Роли и пайплайн' },
-  { id: 'architecture', label: 'Архитектура' },
   { id: 'settings', label: 'Настройки' },
 ];
 
@@ -19,6 +18,7 @@ export const TopHeader: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
+    openSettingsSection,
     theme,
     toggleTheme,
     uiStyle,
@@ -32,6 +32,7 @@ export const TopHeader: React.FC = () => {
     notifications,
     markAllNotificationsRead,
     togglePauseDownload,
+    latestUpdate,
   } = useKovaStore();
 
   const tokens = getUiTokens(uiStyle);
@@ -59,7 +60,7 @@ export const TopHeader: React.FC = () => {
         onClick={() => setActiveTab('workstation')}
         className="font-display text-base font-bold tracking-tight text-zinc-900 dark:text-zinc-100 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
       >
-        Kova Studio
+        ONE CORE AI
       </button>
 
       {/* Zone 2: Clean single-line navigation links */}
@@ -93,6 +94,18 @@ export const TopHeader: React.FC = () => {
 
       {/* Zone 3: Install, Theme, Windows Tray & Primary Action */}
       <div className="flex items-center gap-2 shrink-0">
+        {latestUpdate?.isNewer && (
+          <button
+            type="button"
+            onClick={() => openSettingsSection('updates')}
+            title={`Доступна версия ${latestUpdate.version}`}
+            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium whitespace-nowrap"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Обновление {latestUpdate.version}</span>
+          </button>
+        )}
+
         {isInstallable && !isInstalled && (
           <button
             type="button"

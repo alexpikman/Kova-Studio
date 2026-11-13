@@ -466,7 +466,7 @@ export async function runProjectGit(
   } else if (action === 'push') {
     args = ['push'];
   } else if (action === 'commit') {
-    const msg = commitMessage?.trim() || 'Kova Studio commit';
+    const msg = commitMessage?.trim() || 'ONE CORE AI commit';
     await execFileAsync('git', ['-C', cwd, 'add', '-A']);
     args = ['commit', '-m', msg];
   }
@@ -600,7 +600,7 @@ export async function executeProjectTask(input: {
   if (input.provider?.baseUrl && input.provider?.model) {
     const base = input.provider.baseUrl.replace(/\/+$/, '');
     const sys = [
-      input.provider.systemPrompt || 'Ты инженерный агент Kova Studio.',
+      input.provider.systemPrompt || 'Ты инженерный агент ONE CORE AI.',
       `Текущий проект: ${project.name} (${project.folderPath}). Режим: ${input.mode.toUpperCase()}.`,
       `Файлы в папке проекта (${projectFiles.length}): ${projectFiles.map((f) => f.path).join(', ') || '(папка пуста)'}.`,
       snippets.length > 0 ? `Содержимое первых файлов:\n${snippets.join('\n\n')}` : '',
@@ -649,7 +649,7 @@ export async function executeProjectTask(input: {
           const jsonCandidate = actionMatch ? actionMatch[1].trim() : rawContent.startsWith('{') ? rawContent : null;
 
           let diff: { filePath: string; oldContent: string; newContent: string; summary: string } | undefined;
-          let commandResult: ExecCommandResult | undefined;
+          let proposedCommand: string | undefined;
           let replyText = rawContent;
 
           if (jsonCandidate && input.mode === 'act') {
@@ -676,9 +676,7 @@ export async function executeProjectTask(input: {
                   summary: parsed.writeFile.summary || 'Правка от ИИ-агента',
                 };
               }
-              if (parsed.runCommand?.trim()) {
-                commandResult = await execProjectCommand(project.id, parsed.runCommand.trim());
-              }
+              if (parsed.runCommand?.trim()) proposedCommand = parsed.runCommand.trim();
             } catch {
               // keep raw markdown reply
             }
@@ -688,7 +686,7 @@ export async function executeProjectTask(input: {
             replyText,
             readFiles: readFilesList,
             diff,
-            commandResult,
+            proposedCommand,
             usedLiveLlm: true,
           };
         }

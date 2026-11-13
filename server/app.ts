@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { browseDirectory, createDirectory, tryNativeFolderPicker } from './fsBrowse';
 import { detectHardware, recommendModelForHardware } from './hardware';
+import { readPublicWebPage, searchPublicWeb } from './browserTools';
 import {
   activateLocalModel,
   deleteLocalModel,
@@ -308,7 +309,7 @@ export function createApiApp(rootDir: string = process.cwd()): express.Express {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 7500);
       const response = await fetch(url.toString(), {
-        headers: { Accept: 'application/json', 'User-Agent': 'KovaStudio/1.0' },
+        headers: { Accept: 'application/json', 'User-Agent': 'ONECOREAI/1.0' },
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -385,7 +386,7 @@ export function createApiApp(rootDir: string = process.cwd()): express.Express {
       const encodedRepo = repoId.split('/').map((s) => encodeURIComponent(s)).join('/');
 
       const response = await fetch(`https://huggingface.co/api/models/${encodedRepo}?blobs=true`, {
-        headers: { Accept: 'application/json', 'User-Agent': 'KovaStudio/1.0' },
+        headers: { Accept: 'application/json', 'User-Agent': 'ONECOREAI/1.0' },
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -592,6 +593,32 @@ export function createApiApp(rootDir: string = process.cwd()): express.Express {
     }
   });
 
+  app.get('/api/browser/search', async (req, res) => {
+    try {
+      const query = typeof req.query.q === 'string' ? req.query.q : '';
+      const results = await searchPublicWeb(query);
+      res.json({ ok: true, results });
+    } catch (err) {
+      res.status(400).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Ошибка поиска в интернете',
+      });
+    }
+  });
+
+  app.get('/api/browser/read', async (req, res) => {
+    try {
+      const url = typeof req.query.url === 'string' ? req.query.url : '';
+      const page = await readPublicWebPage(url);
+      res.json({ ok: true, page });
+    } catch (err) {
+      res.status(400).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Ошибка чтения веб-страницы',
+      });
+    }
+  });
+
   // =========================================================================
   // 6. Real SSH Host Test (§4.2) & GitHub Verification
   // =========================================================================
@@ -631,7 +658,7 @@ export function createApiApp(rootDir: string = process.cwd()): express.Express {
 
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'KovaStudio/1.0',
+      'User-Agent': 'ONECOREAI/1.0',
     };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
@@ -718,7 +745,7 @@ export function createApiApp(rootDir: string = process.cwd()): express.Express {
 
     const cleanBase = rawBaseUrl.replace(/\/+$/, '');
     const modelsEndpoint = `${cleanBase}/models`;
-    const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'KovaStudio/1.0' };
+    const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'ONECOREAI/1.0' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
     try {
@@ -777,7 +804,7 @@ export function createApiApp(rootDir: string = process.cwd()): express.Express {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       'HTTP-Referer': 'https://github.com/alexpikman/Kova-Studio',
-      'X-Title': 'Kova Studio',
+      'X-Title': 'ONE CORE AI',
     };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 

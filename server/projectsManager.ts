@@ -234,7 +234,7 @@ export async function verifyAndCloneGithubRepo(input: {
   const [owner, repoName] = cleanRepo.split('/');
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'KovaStudio/1.0',
+    'User-Agent': 'ONECOREAI/1.0',
   };
   if (input.token?.trim()) {
     headers.Authorization = `Bearer ${input.token.trim()}`;
