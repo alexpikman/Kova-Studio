@@ -133,21 +133,27 @@ if ($resolvedBackend -eq "auto") {
 Write-Host "Выбранный профиль ускорения: $resolvedBackend" -ForegroundColor Gray
 
 try {
-    $llamaRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest" -Headers @{ "User-Agent" = "KovaStudio-Installer" }
-    $pattern = switch ($resolvedBackend) {
-        "cuda" { "bin-win-cuda-cu12.*x64\.zip$" }
-        "vulkan" { "bin-win-vulkan-x64\.zip$" }
-        default { "bin-win-avx2-x64\.zip$" }
+    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" -Headers @{ "User-Agent" = "KovaStudio-Installer" }
+    $patterns = switch ($resolvedBackend) {
+        "cuda" { @("bin-win-cuda-.*x64\.zip$", "bin-win-vulkan-x64\.zip$", "bin-win-cpu-x64\.zip$", "bin-win-avx2-x64\.zip$") }
+        "vulkan" { @("bin-win-vulkan-x64\.zip$", "bin-win-cpu-x64\.zip$", "bin-win-avx2-x64\.zip$") }
+        default { @("bin-win-cpu-x64\.zip$", "bin-win-avx2-x64\.zip$") }
     }
-    $asset = $llamaRelease.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
-    if ($asset) {
-        $zipPath = "$env:TEMP\llama-server-win.zip"
-        Write-Host "Скачивание $($asset.name)..." -ForegroundColor Gray
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
-        Expand-Archive -Path $zipPath -DestinationPath $BinDir -Force
-        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-        Write-Host "llama-server.exe установлен в $BinDir" -ForegroundColor Green
+    $asset = $null
+    foreach ($pattern in $patterns) {
+        foreach ($llamaRelease in $releases) {
+            $asset = $llamaRelease.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
+            if ($asset) { break }
+        }
+        if ($asset) { break }
     }
+    if (-not $asset) { throw "Не найден совместимый Windows-архив llama.cpp" }
+    $zipPath = "$env:TEMP\llama-server-win.zip"
+    Write-Host "Скачивание $($asset.name)..." -ForegroundColor Gray
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+    Expand-Archive -Path $zipPath -DestinationPath $BinDir -Force
+    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+    Write-Host "llama-server.exe установлен в $BinDir" -ForegroundColor Green
 } catch {
     Write-Warning "Не удалось загрузить llama-server.exe автоматически: $($_.Exception.Message)"
 }
