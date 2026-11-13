@@ -10,6 +10,7 @@ const NAV_ITEMS: { id: AppTab; label: string }[] = [
   { id: 'workstation', label: 'Рабочая станция' },
   { id: 'models', label: 'Модели GGUF' },
   { id: 'roles', label: 'Роли и пайплайн' },
+  { id: 'ssh-github', label: 'SSH и GitHub' },
   { id: 'install', label: 'Установка на ПК' },
   { id: 'architecture', label: 'Архитектура' },
 ];

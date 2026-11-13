@@ -1,5 +1,5 @@
 import React from 'react';
-import { Keyboard, Shield, Sliders, X } from 'lucide-react';
+import { ArrowUpRight, KeyRound, Keyboard, Shield, Sliders, X } from 'lucide-react';
 import { useKovaStore } from '../../store/useKovaStore';
 import type { GpuBackend } from '../../types/kova';
 
@@ -7,13 +7,19 @@ export const SettingsModal: React.FC = () => {
   const {
     settingsOpen,
     setSettingsOpen,
+    setActiveTab,
     appSettings,
     updateAppSettings,
     inferenceSettings,
     updateInferenceSettings,
+    sshKeys,
+    activeSshKeyId,
+    githubAccess,
   } = useKovaStore();
 
   if (!settingsOpen) return null;
+
+  const activeSshKey = sshKeys.find((k) => k.id === activeSshKeyId) ?? sshKeys[0];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -138,6 +144,40 @@ export const SettingsModal: React.FC = () => {
                   className="w-full h-9 px-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 font-mono text-xs text-zinc-900 dark:text-zinc-100 tabular-nums"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* SSH & GitHub Quick Access */}
+          <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-blue-500" />
+                Доступ по SSH и GitHub
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setActiveTab('ssh-github');
+                }}
+                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <span>Открыть раздел SSH и GitHub</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <div className="font-mono text-zinc-800 dark:text-zinc-200 truncate">
+                  Ключ: {activeSshKey?.privateKeyPath ?? 'не выбран'} ({activeSshKey?.algorithm})
+                </div>
+                <div className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                  GitHub: {githubAccess.repoOwnerSlashName} · метод {githubAccess.authMethod.toUpperCase()}
+                </div>
+              </div>
+              <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 shrink-0">
+                {activeSshKey?.addedToAgent ? 'ssh-agent активен' : 'ssh-agent выкл.'}
+              </span>
             </div>
           </div>
 

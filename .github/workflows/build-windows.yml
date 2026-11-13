@@ -1,0 +1,77 @@
+name: Build Windows Installer (.exe / .msi)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install JS dependencies
+        run: npm ci || npm install
+
+      - name: Generate Tauri Windows icons from PWA asset
+        run: npx @tauri-apps/cli@2 icon public/pwa-512x512.png
+
+      - name: Download llama-server.exe sidecar (llama.cpp)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest" -Headers @{ "User-Agent" = "KovaStudio-CI" }
+          $asset = $release.assets | Where-Object { $_.name -match "bin-win-vulkan-x64\.zip$" } | Select-Object -First 1
+          if (-not $asset) {
+            $asset = $release.assets | Where-Object { $_.name -match "bin-win-avx2-x64\.zip$" } | Select-Object -First 1
+          }
+          if (-not $asset) { throw "Could not find Windows llama.cpp release zip" }
+          $zip = "$env:RUNNER_TEMP\llama.zip"
+          $extract = "$env:RUNNER_TEMP\llama-bin"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $exe = Get-ChildItem -Path $extract -Filter "llama-server.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "llama-server.exe not found inside archive" }
+          New-Item -ItemType Directory -Force -Path "src-tauri\binaries" | Out-Null
+          Copy-Item $exe.FullName "src-tauri\binaries\llama-server-x86_64-pc-windows-msvc.exe" -Force
+
+      - name: Build Tauri 2.0 (.exe NSIS & .msi WiX) and publish GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Kova Studio v__VERSION__'
+          releaseBody: |
+            Автоматическая сборка нативного Windows-установщика (`.exe` NSIS и `.msi` WiX) со встроенным `llama-server.exe`.
+
+            ### Установка в 1 клик (PowerShell)
+            ```powershell
+            irm https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.ps1 | iex
+            ```
+          releaseDraft: false
+          prerelease: false

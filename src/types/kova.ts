@@ -1,10 +1,64 @@
-export type AppTab = 'workstation' | 'models' | 'roles' | 'install' | 'architecture';
+export type AppTab = 'workstation' | 'models' | 'roles' | 'ssh-github' | 'install' | 'architecture';
 export type AgentMode = 'plan' | 'act';
 export type GpuBackend = 'auto' | 'cuda' | 'vulkan' | 'cpu';
 export type ServerStatus = 'ready' | 'generating' | 'loading' | 'stopped' | 'error';
 
 export type RolePersonaKind = 'architect' | 'developer' | 'reviewer' | 'qa' | 'custom';
 export type PermissionPolicy = 'allow' | 'ask' | 'deny';
+
+export type SshAlgorithm = 'ed25519' | 'rsa-4096' | 'ecdsa';
+export type GitHubAuthMethod = 'ssh' | 'pat' | 'gh-cli';
+
+export interface SshKeyProfile {
+  id: string;
+  name: string;
+  algorithm: SshAlgorithm;
+  comment: string;
+  privateKeyPath: string;
+  publicKey: string;
+  fingerprint: string;
+  hasPassphrase: boolean;
+  addedToAgent: boolean;
+  createdAt: string;
+}
+
+export interface SshHostEntry {
+  id: string;
+  alias: string;
+  hostName: string;
+  user: string;
+  port: number;
+  identityFile: string;
+  forwardAgent: boolean;
+  strictHostKeyChecking: 'yes' | 'accept-new' | 'no';
+  status: 'untested' | 'connected' | 'error';
+  lastChecked?: string;
+}
+
+export interface SshGlobalSettings {
+  openSshAgentAutoStart: boolean;
+  windowsOpenSshPath: string;
+  defaultKeyDir: string;
+  useGitSshCommandEnv: boolean;
+}
+
+export interface GitHubAccessSettings {
+  authMethod: GitHubAuthMethod;
+  repoOwnerSlashName: string;
+  defaultBranch: string;
+  gitUserName: string;
+  gitUserEmail: string;
+  tokenInput: string;
+  scopes: {
+    repo: boolean;
+    workflow: boolean;
+    writePackages: boolean;
+    readUser: boolean;
+  };
+  autoSignCommits: boolean;
+  lastVerifyStatus: 'idle' | 'checking' | 'ok' | 'error';
+  lastVerifyMessage: string;
+}
 
 export interface ModelRole {
   id: string;

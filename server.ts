@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
@@ -236,9 +237,154 @@ async function startServer() {
     }
   });
 
+  app.get('/install.ps1', async (_req, res) => {
+    try {
+      const fs = await import('fs/promises');
+      const scriptPath = path.resolve(__dirname, 'scripts', 'install.ps1');
+      const content = await fs.readFile(scriptPath, 'utf-8');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="install-kova-studio.ps1"');
+      res.send(content);
+    } catch {
+      res.status(404).send('# install.ps1 not found');
+    }
+  });
+
+  app.post('/api/github/verify', async (req, res) => {
+    const rawRepo = typeof req.body?.repo === 'string' ? req.body.repo.trim() : '';
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+
+    const cleanRepo = rawRepo.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+    if (!cleanRepo || !cleanRepo.includes('/')) {
+      res.status(400).json({ ok: false, error: 'Укажите репозиторий в формате owner/repo' });
+      return;
+    }
+
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'KovaStudio/1.0',
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 7500);
+
+      let authUser: string | null = null;
+      let grantedScopes: string[] = [];
+
+      if (token) {
+        const userResp = await fetch('https://api.github.com/user', {
+          headers,
+          signal: controller.signal,
+        });
+        if (!userResp.ok) {
+          clearTimeout(timeout);
+          res.status(userResp.status).json({
+            ok: false,
+            error: `Токен отклонён GitHub API (HTTP ${userResp.status})`,
+          });
+          return;
+        }
+        const userData = (await userResp.json()) as { login?: string };
+        authUser = userData.login ?? null;
+        const rawScopes = userResp.headers.get('x-oauth-scopes') || '';
+        grantedScopes = rawScopes
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      const [owner, repoName] = cleanRepo.split('/');
+      const repoResp = await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
+        {
+          headers,
+          signal: controller.signal,
+        },
+      );
+      clearTimeout(timeout);
+
+      if (!repoResp.ok) {
+        res.status(repoResp.status).json({
+          ok: false,
+          authUser,
+          grantedScopes,
+          error:
+            repoResp.status === 404
+              ? `Репозиторий ${cleanRepo} не найден или приватный (нужен токен / SSH)`
+              : `GitHub API вернул HTTP ${repoResp.status}`,
+        });
+        return;
+      }
+
+      const repoData = (await repoResp.json()) as {
+        full_name?: string;
+        private?: boolean;
+        default_branch?: string;
+        stargazers_count?: number;
+      };
+
+      res.json({
+        ok: true,
+        authUser,
+        grantedScopes,
+        repo: {
+          fullName: repoData.full_name ?? cleanRepo,
+          isPrivate: Boolean(repoData.private),
+          defaultBranch: repoData.default_branch ?? 'main',
+          stars: repoData.stargazers_count ?? 0,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      res.status(502).json({ ok: false, error: msg });
+    }
+  });
+
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
+    // Intercept /@vite/client when HMR is disabled so Vite never attempts blocked port 24678 WebSockets,
+    // while keeping CSS injection via updateStyle/removeStyle working.
+    if (process.env.DISABLE_HMR === 'true') {
+      app.get('/@vite/client', (_req, res) => {
+        res.type('application/javascript').send(
+          `const sheetsMap = new Map();
+export const createHotContext = () => ({ accept() {}, dispose() {}, prune() {}, invalidate() {}, decline() {}, on() {}, off() {}, send() {} });
+export const injectQuery = (u) => u;
+export const updateStyle = (id, content) => {
+  let style = sheetsMap.get(id);
+  if (!style) {
+    style = document.createElement('style');
+    style.setAttribute('type', 'text/css');
+    style.setAttribute('data-vite-dev-id', id);
+    style.textContent = content;
+    document.head.appendChild(style);
+    sheetsMap.set(id, style);
+  } else {
+    style.textContent = content;
+  }
+};
+export const removeStyle = (id) => {
+  const style = sheetsMap.get(id);
+  if (style) {
+    document.head.removeChild(style);
+    sheetsMap.delete(id);
+  }
+};`,
+        );
+      });
+    }
+
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+        ws: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -250,7 +396,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Kova Studio server listening on http://0.0.0.0:${PORT}`);
   });
 }

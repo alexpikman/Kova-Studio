@@ -6,6 +6,7 @@ import { ModelHubView } from './components/models/ModelHubView';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { RolesAndPipelineView } from './components/roles/RolesAndPipelineView';
 import { SettingsModal } from './components/settings/SettingsModal';
+import { SshGithubView } from './components/settings/SshGithubView';
 import { WorkstationView } from './components/workstation/WorkstationView';
 import { useKovaStore } from './store/useKovaStore';
 
@@ -50,6 +51,7 @@ export default function App() {
         {activeTab === 'workstation' && <WorkstationView />}
         {activeTab === 'models' && <ModelHubView />}
         {activeTab === 'roles' && <RolesAndPipelineView />}
+        {activeTab === 'ssh-github' && <SshGithubView />}
         {activeTab === 'install' && <InstallGuideView />}
         {activeTab === 'architecture' && <ArchitecturePortalView />}
       </main>

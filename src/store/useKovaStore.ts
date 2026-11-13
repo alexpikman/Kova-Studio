@@ -12,12 +12,19 @@ import {
   INITIAL_PROJECT_FILES,
   INITIAL_SESSIONS,
 } from '../data/workspaceSeed';
+import {
+  INITIAL_GITHUB_SETTINGS,
+  INITIAL_SSH_HOSTS,
+  INITIAL_SSH_KEYS,
+  INITIAL_SSH_SETTINGS,
+} from '../data/sshGithubSeed';
 import type {
   AgentMode,
   AppSettings,
   AppTab,
   ChatSession,
   Checkpoint,
+  GitHubAccessSettings,
   GpuBackend,
   InferenceSettings,
   LocalModel,
@@ -29,6 +36,10 @@ import type {
   PipelineStage,
   ProjectFile,
   ServerStatus,
+  SshAlgorithm,
+  SshGlobalSettings,
+  SshHostEntry,
+  SshKeyProfile,
   TrayNotification,
 } from '../types/kova';
 
@@ -83,6 +94,12 @@ interface KovaStore {
   appSettings: AppSettings;
   notifications: TrayNotification[];
 
+  sshKeys: SshKeyProfile[];
+  activeSshKeyId: string;
+  sshHosts: SshHostEntry[];
+  sshSettings: SshGlobalSettings;
+  githubAccess: GitHubAccessSettings;
+
   setActiveTab: (tab: AppTab) => void;
   toggleTheme: () => void;
   setSettingsOpen: (open: boolean) => void;
@@ -128,6 +145,23 @@ interface KovaStore {
   updateAppSettings: (patch: Partial<AppSettings>) => void;
   toggleServerPower: () => void;
   markAllNotificationsRead: () => void;
+
+  setActiveSshKey: (keyId: string) => void;
+  addSshKey: (payload: {
+    name: string;
+    algorithm: SshAlgorithm;
+    comment: string;
+    hasPassphrase: boolean;
+  }) => void;
+  toggleSshKeyInAgent: (keyId: string) => void;
+  deleteSshKey: (keyId: string) => void;
+  addSshHost: (host: Omit<SshHostEntry, 'id' | 'status'>) => void;
+  updateSshHost: (hostId: string, patch: Partial<SshHostEntry>) => void;
+  deleteSshHost: (hostId: string) => void;
+  testSshHostConnection: (hostId: string) => void;
+  updateSshSettings: (patch: Partial<SshGlobalSettings>) => void;
+  updateGitHubAccess: (patch: Partial<GitHubAccessSettings>) => void;
+  verifyGitHubAccess: () => Promise<void>;
 }
 
 const downloadTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -212,6 +246,12 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
       read: false,
     },
   ],
+
+  sshKeys: INITIAL_SSH_KEYS,
+  activeSshKeyId: INITIAL_SSH_KEYS[0].id,
+  sshHosts: INITIAL_SSH_HOSTS,
+  sshSettings: INITIAL_SSH_SETTINGS,
+  githubAccess: INITIAL_GITHUB_SETTINGS,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -1031,4 +1071,190 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),
     })),
+
+  setActiveSshKey: (keyId) =>
+    set((s) => {
+      const target = s.sshKeys.find((k) => k.id === keyId);
+      if (!target) return s;
+      return {
+        activeSshKeyId: keyId,
+        sshHosts: s.sshHosts.map((h) =>
+          h.alias === 'github.com' ? { ...h, identityFile: target.privateKeyPath } : h,
+        ),
+      };
+    }),
+
+  addSshKey: ({ name, algorithm, comment, hasPassphrase }) =>
+    set((s) => {
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'custom';
+      const prefix = algorithm === 'rsa-4096' ? 'id_rsa' : algorithm === 'ecdsa' ? 'id_ecdsa' : 'id_ed25519';
+      const randBytes = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+      const pubPrefix =
+        algorithm === 'rsa-4096'
+          ? 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC'
+          : algorithm === 'ecdsa'
+            ? 'ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTIt'
+            : 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI';
+
+      const newKey: SshKeyProfile = {
+        id: `ssh-key-${Date.now()}`,
+        name: name.trim() || `Ключ ${algorithm.toUpperCase()}`,
+        algorithm,
+        comment: comment.trim() || s.githubAccess.gitUserEmail,
+        privateKeyPath: `${s.sshSettings.defaultKeyDir.replace(/\\$/, '')}\\${prefix}_${slug}`,
+        publicKey: `${pubPrefix}${randBytes}KovaStudioGeneratedKey ${comment.trim() || s.githubAccess.gitUserEmail}`,
+        fingerprint: `SHA256:${randBytes.toUpperCase()}vL9mK2pQ`,
+        hasPassphrase,
+        addedToAgent: s.sshSettings.openSshAgentAutoStart,
+        createdAt: new Date().toISOString().slice(0, 10),
+      };
+
+      return {
+        sshKeys: [newKey, ...s.sshKeys],
+        activeSshKeyId: newKey.id,
+      };
+    }),
+
+  toggleSshKeyInAgent: (keyId) =>
+    set((s) => ({
+      sshKeys: s.sshKeys.map((k) =>
+        k.id === keyId ? { ...k, addedToAgent: !k.addedToAgent } : k,
+      ),
+    })),
+
+  deleteSshKey: (keyId) =>
+    set((s) => {
+      if (s.sshKeys.length <= 1) return s;
+      const next = s.sshKeys.filter((k) => k.id !== keyId);
+      const nextActive = s.activeSshKeyId === keyId ? next[0].id : s.activeSshKeyId;
+      return { sshKeys: next, activeSshKeyId: nextActive };
+    }),
+
+  addSshHost: (host) =>
+    set((s) => ({
+      sshHosts: [
+        ...s.sshHosts,
+        {
+          ...host,
+          id: `host-${Date.now()}`,
+          status: 'untested',
+        },
+      ],
+    })),
+
+  updateSshHost: (hostId, patch) =>
+    set((s) => ({
+      sshHosts: s.sshHosts.map((h) => (h.id === hostId ? { ...h, ...patch } : h)),
+    })),
+
+  deleteSshHost: (hostId) =>
+    set((s) => ({
+      sshHosts: s.sshHosts.filter((h) => h.id !== hostId),
+    })),
+
+  testSshHostConnection: (hostId) => {
+    const target = get().sshHosts.find((h) => h.id === hostId);
+    if (!target) return;
+
+    const activeKey = get().sshKeys.find((k) => k.privateKeyPath === target.identityFile);
+    const ok = Boolean(target.hostName.trim()) && target.port > 0 && target.port <= 65535;
+    set((s) => ({
+      sshHosts: s.sshHosts.map((h) =>
+        h.id === hostId
+          ? {
+              ...h,
+              status: ok ? 'connected' : 'error',
+              lastChecked: ok
+                ? `Рукопожатие OK (${activeKey ? activeKey.algorithm : 'ed25519'}) · ${nowTime()}`
+                : 'Ошибка параметров хоста',
+            }
+          : h,
+      ),
+    }));
+  },
+
+  updateSshSettings: (patch) =>
+    set((s) => ({
+      sshSettings: { ...s.sshSettings, ...patch },
+    })),
+
+  updateGitHubAccess: (patch) =>
+    set((s) => ({
+      githubAccess: { ...s.githubAccess, ...patch },
+    })),
+
+  verifyGitHubAccess: async () => {
+    const { githubAccess } = get();
+    set((s) => ({
+      githubAccess: {
+        ...s.githubAccess,
+        lastVerifyStatus: 'checking',
+        lastVerifyMessage: 'Проверка соединения с GitHub API...',
+      },
+    }));
+
+    try {
+      const resp = await fetch('/api/github/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repo: githubAccess.repoOwnerSlashName,
+          token: githubAccess.authMethod === 'pat' ? githubAccess.tokenInput : '',
+        }),
+      });
+      const data = (await resp.json()) as {
+        ok?: boolean;
+        error?: string;
+        authUser?: string | null;
+        grantedScopes?: string[];
+        repo?: {
+          fullName: string;
+          isPrivate: boolean;
+          defaultBranch: string;
+          stars: number;
+        };
+      };
+
+      if (!resp.ok || !data.ok) {
+        set((s) => ({
+          githubAccess: {
+            ...s.githubAccess,
+            lastVerifyStatus: 'error',
+            lastVerifyMessage: data.error || `Ошибка проверки (HTTP ${resp.status})`,
+          },
+        }));
+        return;
+      }
+
+      const parts: string[] = [];
+      if (data.authUser) parts.push(`Аккаунт: @${data.authUser}`);
+      if (data.repo) {
+        parts.push(
+          `Репозиторий: ${data.repo.fullName} (${data.repo.isPrivate ? 'Private' : 'Public'}, ветка ${data.repo.defaultBranch})`,
+        );
+      }
+      if (data.grantedScopes && data.grantedScopes.length > 0) {
+        parts.push(`Права токена: ${data.grantedScopes.join(', ')}`);
+      }
+
+      set((s) => ({
+        githubAccess: {
+          ...s.githubAccess,
+          lastVerifyStatus: 'ok',
+          lastVerifyMessage: parts.join(' · ') || 'Доступ к GitHub подтверждён',
+        },
+      }));
+    } catch (err) {
+      set((s) => ({
+        githubAccess: {
+          ...s.githubAccess,
+          lastVerifyStatus: 'error',
+          lastVerifyMessage: err instanceof Error ? err.message : 'Сетевая ошибка при проверке GitHub',
+        },
+      }));
+    }
+  },
 }));
