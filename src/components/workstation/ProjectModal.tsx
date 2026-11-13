@@ -15,6 +15,7 @@ import {
 import { useKovaStore, type SaveProjectPayload } from '../../store/useKovaStore';
 import type { FsBrowseResult, ProjectFolderSource, ProjectRecord } from '../../types/kova';
 import { cn } from '../../utils/cn';
+import { apiFetch as fetch } from '../../utils/apiFetch';
 
 interface ProjectModalProps {
   open: boolean;

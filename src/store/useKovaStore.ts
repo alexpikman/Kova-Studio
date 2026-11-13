@@ -6,6 +6,7 @@ import {
   INITIAL_ROLES,
 } from '../data/rolesAndRules';
 import { INITIAL_SESSIONS } from '../data/workspaceSeed';
+import { apiFetch as fetch } from '../utils/apiFetch';
 import {
   INITIAL_GITHUB_SETTINGS,
   INITIAL_SSH_HOSTS,
@@ -143,6 +144,7 @@ interface KovaStore {
   checkpoints: Checkpoint[];
 
   localModels: LocalModel[];
+  localModelsError: string | null;
   activeModelId: string;
   serverStatus: ServerStatus;
   tokensPerSec: number;
@@ -386,6 +388,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
   checkpoints: [],
 
   localModels: [],
+  localModelsError: null,
   activeModelId: '',
   serverStatus: 'stopped',
   tokensPerSec: 0,
@@ -493,8 +496,11 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
         models?: LocalModel[];
         activeModelId?: string;
         modelsDir?: string;
+        error?: string;
       };
-      if (!res.ok || !data.ok) return;
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
 
       const models = data.models ?? [];
       const activeId = data.activeModelId ?? '';
@@ -507,12 +513,16 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
 
       set((s) => ({
         localModels: models,
+        localModelsError: null,
         activeModelId: activeId,
         serverStatus: activeId ? 'ready' : 'stopped',
         appSettings: data.modelsDir ? { ...s.appSettings, modelsDir: data.modelsDir } : s.appSettings,
       }));
-    } catch {
-      // ignore transient poll failure
+    } catch (err) {
+      set({
+        localModelsError:
+          err instanceof Error ? err.message : 'Не удалось получить список локальных моделей',
+      });
     }
   },
 
@@ -1581,6 +1591,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
       try {
         const res = await fetch(`/api/hf/model?repoId=${encodeURIComponent(item.repoId)}`);
         const data = (await res.json()) as {
+          error?: string;
           files?: Array<{
             filename: string;
             quant: string;
@@ -1590,14 +1601,23 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
             downloadUrl: string;
           }>;
         };
-        if (res.ok && Array.isArray(data.files) && data.files.length > 0) {
+        if (!res.ok || data.error) {
+          return {
+            ok: false,
+            error: data.error || `Hugging Face вернул HTTP ${res.status}`,
+          };
+        }
+        if (Array.isArray(data.files) && data.files.length > 0) {
           variant =
             data.files.find((f) => f.quant === selectedQuant) ??
             data.files.find((f) => f.quant.includes('Q4')) ??
             data.files[0];
         }
-      } catch {
-        // handled below
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : 'Не удалось получить файл модели с Hugging Face',
+        };
       }
     }
 

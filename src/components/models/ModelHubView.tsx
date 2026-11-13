@@ -23,6 +23,7 @@ import { CURATED_GGUF_MODELS } from '../../data/curatedModels';
 import { useKovaStore } from '../../store/useKovaStore';
 import type { GgufFileVariant, ModelCatalogItem, ModelRecommendation } from '../../types/kova';
 import { cn } from '../../utils/cn';
+import { apiFetch as fetch } from '../../utils/apiFetch';
 
 type SourceFilter = 'all' | 'huggingface' | 'curated';
 type QuantFilter = 'ALL' | 'Q4_K_M' | 'Q5_K_M' | 'Q8_0';
@@ -56,6 +57,7 @@ export const ModelHubView: React.FC = () => {
     hardwareError,
     refreshHardwareProfile,
     localModels,
+    localModelsError,
     activeModelId,
     selectLocalModel,
     deleteLocalModel,
@@ -316,6 +318,9 @@ export const ModelHubView: React.FC = () => {
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1 max-w-2xl">
               Реальное скачивание на диск в <span className="font-mono">{appSettings.modelsDir}</span> с HTTP Range докачкой, проверкой SHA256, Ollama pull и импортом локальных <span className="font-mono">.gguf</span> / <span className="font-mono">.safetensors</span>.
             </p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2 max-w-2xl">
+              Поиск и скачивание публичных моделей Hugging Face работают без API-ключа. Ключ нужен только для закрытых моделей или облачных AI-провайдеров.
+            </p>
           </div>
           <button
             type="button"
@@ -450,9 +455,15 @@ export const ModelHubView: React.FC = () => {
               </h2>
             </div>
             <span className="font-mono text-xs text-zinc-500">
-              Манифест: ~/.kova-studio/models.json
+              Манифест моделей: models.json
             </span>
           </div>
+
+          {localModelsError && (
+            <div className="mb-3 p-2.5 rounded-lg border border-rose-500/40 bg-rose-500/10 text-xs text-rose-600 dark:text-rose-300">
+              Не удалось загрузить список моделей: {localModelsError}
+            </div>
+          )}
 
           {localModels.length === 0 ? (
             <div className="p-4 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 text-center">

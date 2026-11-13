@@ -10,7 +10,7 @@ param(
     [string]$Repo = "alexpikman/Kova-Studio",
     [string]$Branch = "main",
     [string]$AppDir = "$env:LOCALAPPDATA\KovaStudio\app",
-    [string]$ModelsDir = "$env:APPDATA\KovaStudio\models",
+    [string]$ModelsDir = "$env:APPDATA\com.kovastudio.app\models",
     [ValidateSet("auto", "cuda", "vulkan", "cpu")]
     [string]$GpuBackend = "auto",
     [string]$GitHubToken = $env:GITHUB_TOKEN,
@@ -98,7 +98,7 @@ Write-Host "=========================================================" -Foregrou
 Write-Host "Репозиторий: https://github.com/$Repo (ветка: $Branch)" -ForegroundColor Gray
 
 # 1. Создание локальных каталогов
-Write-Step "1/5. Подготовка каталогов %APPDATA%\KovaStudio\models и %LOCALAPPDATA%\KovaStudio"
+Write-Step "1/5. Подготовка каталогов %APPDATA%\com.kovastudio.app\models и %LOCALAPPDATA%\KovaStudio"
 $BinDir = "$env:LOCALAPPDATA\KovaStudio\bin"
 New-Item -ItemType Directory -Force -Path $ModelsDir, $BinDir, $AppDir | Out-Null
 

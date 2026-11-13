@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Kova Studio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.kovastudio.app",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:3000",
+    "beforeBuildCommand": "npm run build && npm run tauri:prepare",
     "frontendDist": "../dist"
   },
   "app": {
@@ -29,6 +29,10 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "externalBin": ["binaries/llama-server"],
+    "resources": {
+      "../dist/backend.cjs": "backend.cjs",
+      "runtime/node.exe": "node.exe"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
