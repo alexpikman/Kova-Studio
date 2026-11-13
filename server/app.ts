@@ -90,6 +90,38 @@ function estimateParamsBillions(id: string): number {
 
 export function createApiApp(rootDir: string = process.cwd()): express.Express {
   const app = express();
+  const tauriOrigins = new Set(['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']);
+  app.use((req, res, next) => {
+    const origin = req.header('Origin');
+    if (origin) {
+      let isLoopbackOrigin = tauriOrigins.has(origin);
+      try {
+        const parsed = new URL(origin);
+        isLoopbackOrigin ||= parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      } catch {
+        isLoopbackOrigin = false;
+      }
+
+      if (!isLoopbackOrigin) {
+        res.status(403).json({ ok: false, error: 'Origin is not allowed to access the local Kova API' });
+        return;
+      }
+
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      if (req.header('Access-Control-Request-Private-Network') === 'true') {
+        res.setHeader('Access-Control-Allow-Private-Network', 'true');
+      }
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
   app.use(express.json({ limit: '5mb' }));
 
   app.get('/api/health', (_req, res) => {

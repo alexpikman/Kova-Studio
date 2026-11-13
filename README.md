@@ -21,12 +21,14 @@
   - **Субагенты и делегирование**: параллельный запуск воркеров через инспектор или slash-команды (`/skill`, `/memory`, `/subagent`, `/env`, `/provider`).
   - **Среды выполнения (`Локально` / `SSH` / `Docker`) и Шлюз мессенджеров (`Telegram` / `Discord` / `Slack`)**: переключение среды исполнения и удалённое управление агентом с проверкой Bot Token.
 - **Единый раздел «Настройки»**: все параметры интерфейса, бесплатных провайдеров, навыков и памяти, путей к GGUF/`llama-server.exe`, профилей GPU/VRAM, ключей OpenSSH (`~/.ssh/config`), доступа GitHub (SSH / PAT / `gh` CLI), сред выполнения и шлюзов собраны в одном месте.
-- **Модели GGUF (Hugging Face Hub)**: живой поиск по `apps=llama.cpp`, докачка по HTTP `Range`, проверка `SHA256` и загрузка по прямому URL.
+- **Модели GGUF (Hugging Face Hub)**: живой поиск по `apps=llama.cpp`, докачка по HTTP `Range`, проверка `SHA256` и загрузка по прямому URL. Для публичных моделей API-ключ не нужен.
 - **Роли и 6-этапный пайплайн**: Архитектор, Разработчик, Код-ревьюер, Тестировщик и собственный конструктор ролей с библиотекой правил и графом сборки от ТЗ до Checkpoint.
 
 ---
 
 ## Как скачать и запустить с GitHub (`alexpikman/Kova-Studio`)
+
+В Windows-приложении локальный API запускается вместе с приложением, а встроенный Node.js не нужно устанавливать отдельно. Определение оборудования, каталог Hugging Face и скачивание публичных GGUF работают без ключей; ключи нужны только для облачных AI-провайдеров и закрытых/ограниченных моделей.
 
 ### Способ 1 — Автоматическая установка в 1 клик (Windows 10/11, без MSVC)
 
@@ -37,7 +39,7 @@ irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/instal
 ```
 
 **Что сделает скрипт [`scripts/install.ps1`](https://github.com/alexpikman/Kova-Studio/blob/main/scripts/install.ps1):**
-1. Создаст каталоги `%APPDATA%\KovaStudio\models\` и `%LOCALAPPDATA%\KovaStudio\`.
+1. Создаст каталоги `%APPDATA%\com.kovastudio.app\models\` и `%LOCALAPPDATA%\KovaStudio\`.
 2. Установит **Microsoft Edge WebView2 Runtime** (если ещё не установлен).
 3. Автоматически определит GPU (**NVIDIA CUDA** / **Vulkan** / **CPU AVX2**) и скачает `llama-server.exe` из официальных релизов `ggml-org/llama.cpp`.
 4. Проверит **[GitHub Releases](https://github.com/alexpikman/Kova-Studio/releases)** и **GitHub Actions** на наличие готового `.exe` (NSIS) или `.msi` (WiX) установщика — и сразу установит его без локальной компиляции MSVC (`8012`).
@@ -57,7 +59,7 @@ irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/instal
 
 ### Способ 3 — Скачать исходники вручную (ZIP или `git clone`) и запустить локально
 
-Потребуется только **Node.js 20+ / 22+**:
+Потребуется **Node.js 22+**:
 
 ```powershell
 git clone https://github.com/alexpikman/Kova-Studio.git

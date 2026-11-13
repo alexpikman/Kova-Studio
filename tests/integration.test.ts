@@ -161,7 +161,26 @@ test('1. Real hardware detection & 3-tier recommendation logic', async () => {
   assert.equal(tooHeavy.categoryLabel, 'Слишком тяжело');
 });
 
-test('2. Real streaming download, pause, HTTP Range resume, SHA256 verify, corrupt block, and disk delete', async () => {
+test('2. Local desktop origins can access the API without opening it to remote origins', async () => {
+  const allowedOrigin = 'http://tauri.localhost';
+  const preflight = await fetch(`${apiBaseUrl}/api/health`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: allowedOrigin,
+      'Access-Control-Request-Method': 'GET',
+      'Access-Control-Request-Headers': 'content-type',
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), allowedOrigin);
+
+  const rejected = await fetch(`${apiBaseUrl}/api/health`, {
+    headers: { Origin: 'https://example.com' },
+  });
+  assert.equal(rejected.status, 403);
+});
+
+test('3. Real streaming download, pause, HTTP Range resume, SHA256 verify, corrupt block, and disk delete', async () => {
   throttleFirstChunk = true;
   rangeRequestSeen = false;
 
@@ -268,7 +287,7 @@ test('2. Real streaming download, pause, HTTP Range resume, SHA256 verify, corru
   await jsonReq(`/api/models/local/${encodeURIComponent(badId)}`, { method: 'DELETE' });
 });
 
-test('3. Mandatory folder validation, real command execution, action log, /undo, and non-destructive project delete', async () => {
+test('4. Mandatory folder validation, real command execution, action log, /undo, and non-destructive project delete', async () => {
   // Attempt to create project without folder -> must fail with 400
   const invalidProj = await jsonReq<{ ok: boolean; error: string }>('/api/projects', {
     method: 'POST',
@@ -361,7 +380,7 @@ test('3. Mandatory folder validation, real command execution, action log, /undo,
   }
 });
 
-test('4. Real error handling for SSH / GitHub / Ollama without simulation', async () => {
+test('5. Real error handling for SSH / GitHub / Ollama without simulation', async () => {
   const sshRes = await jsonReq<{ ok: boolean; error: string }>('/api/ssh/test', {
     method: 'POST',
     body: JSON.stringify({

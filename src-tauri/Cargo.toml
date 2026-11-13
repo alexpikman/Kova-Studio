@@ -1,6 +1,6 @@
 [package]
 name = "kova-studio"
-version = "0.1.0"
+version = "0.1.1"
 description = "Kova Studio — автономный Windows ИИ-агент для программирования на базе Tauri 2.0 и llama.cpp"
 authors = ["Kova Studio Contributors"]
 edition = "2021"
