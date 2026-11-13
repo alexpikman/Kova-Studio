@@ -69,7 +69,7 @@ export const INITIAL_SSH_SETTINGS: SshGlobalSettings = {
 
 export const INITIAL_GITHUB_SETTINGS: GitHubAccessSettings = {
   authMethod: 'ssh',
-  repoOwnerSlashName: 'kova-studio/kova-studio',
+  repoOwnerSlashName: 'alexpikman/Kova-Studio',
   defaultBranch: 'main',
   gitUserName: 'Kova Developer',
   gitUserEmail: 'dev@kova-studio.local',

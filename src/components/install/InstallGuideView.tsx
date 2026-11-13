@@ -104,11 +104,25 @@ if (-not $BuildFromSource) {
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements }
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { winget install --id Rustlang.Rustup -e --silent --accept-package-agreements --accept-source-agreements }
+$vsWhere = "\${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+$hasMsvc = (Test-Path $vsWhere) -and (& $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+if (-not $hasMsvc) {
+    $vsOverride = "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --includeRecommended"
+    winget install --id Microsoft.VisualStudio.2022.BuildTools -e --force --accept-package-agreements --accept-source-agreements --override $vsOverride
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Сбой winget ($LASTEXITCODE). Скачайте Build Tools вручную: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+    }
+}
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 
 # 5. Клонирование с GitHub и сборка Tauri 2.0 (.exe / .msi)
-if (Test-Path "$InstallDir\\.git") { Push-Location $InstallDir; git pull origin $Branch }
-else { git clone --branch $Branch "https://github.com/$Repo.git" $InstallDir; Push-Location $InstallDir }
+$RepoUrl = "https://github.com/$Repo.git"
+if (Test-Path "$InstallDir\\.git") { git -C $InstallDir pull origin $Branch }
+else {
+    git clone --branch $Branch $RepoUrl $InstallDir
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$InstallDir\\package.json")) { throw "Ошибка клонирования $RepoUrl" }
+}
+Push-Location $InstallDir
 
 $sidecarDir = Join-Path $InstallDir "src-tauri\\binaries"
 New-Item -ItemType Directory -Force -Path $sidecarDir | Out-Null

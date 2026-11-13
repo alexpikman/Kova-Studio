@@ -3,11 +3,11 @@
     Автоматический установщик Kova Studio (.exe / .msi Tauri 2.0 + llama.cpp) для Windows 10/11.
 .DESCRIPTION
     Запуск одной командой из PowerShell:
-    irm https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.ps1 | iex
+    irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1 | iex
 #>
 
 param(
-    [string]$Repo = "kova-studio/kova-studio",
+    [string]$Repo = "alexpikman/Kova-Studio",
     [string]$Branch = "main",
     [string]$InstallDir = "$env:LOCALAPPDATA\KovaStudio\src",
     [string]$ModelsDir = "$env:APPDATA\KovaStudio\models",
@@ -134,24 +134,72 @@ Ensure-WingetPackage "git" "Git.Git" "Git"
 Ensure-WingetPackage "node" "OpenJS.NodeJS.LTS" "Node.js LTS"
 Ensure-WingetPackage "cargo" "Rustlang.Rustup" "Rust (rustup + cargo)"
 
-$vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$hasMsvc = (Test-Path $vsWhere) -and (& $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
-if (-not $hasMsvc) {
-    Write-Host "Установка Visual Studio C++ Build Tools..." -ForegroundColor Yellow
-    winget install --id Microsoft.VisualStudio.2022.BuildTools -e --silent --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" --accept-package-agreements --accept-source-agreements
+function Test-MsvcInstalled {
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vsWhere)) { return $false }
+    $path = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+    return -not [string]::IsNullOrWhiteSpace($path)
+}
+
+if (-not (Test-MsvcInstalled)) {
+    Write-Host "Установка Visual Studio 2022 C++ Build Tools (MSVC v143 + Windows 11 SDK)..." -ForegroundColor Yellow
+    $vsOverride = "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --includeRecommended"
+
+    winget install --id Microsoft.VisualStudio.2022.BuildTools -e --force --accept-package-agreements --accept-source-agreements --override $vsOverride
+    $wingetExit = $LASTEXITCODE
+
+    if ($wingetExit -ne 0 -and -not (Test-MsvcInstalled)) {
+        Write-Warning "winget завершился с кодом $wingetExit. Пробуем прямой запуск официального установщика Microsoft..."
+        try {
+            $vsExe = "$env:TEMP\vs_BuildTools.exe"
+            Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_BuildTools.exe" -OutFile $vsExe
+            $proc = Start-Process -FilePath $vsExe -ArgumentList $vsOverride -Wait -PassThru
+            Remove-Item $vsExe -Force -ErrorAction SilentlyContinue
+            if ($proc.ExitCode -notin @(0, 3010)) {
+                throw "Прямой установщик завершился с кодом $($proc.ExitCode)."
+            }
+        } catch {
+            Write-Host "`n[!] Не удалось автоматически установить Visual Studio C++ Build Tools (ошибка: $($_.Exception.Message))." -ForegroundColor Red
+            Write-Host "Возможные причины: отсутствие прав администратора, сбой сети или блокировка антивирусом." -ForegroundColor Yellow
+            Write-Host "Установите вручную «Разработка классических приложений на C++» (MSVC v143 + Windows 10/11 SDK):" -ForegroundColor Yellow
+            Write-Host "  https://visualstudio.microsoft.com/visual-cpp-build-tools/" -ForegroundColor Cyan
+            throw "Прервано: требуется Visual Studio C++ Build Tools для сборки Tauri."
+        }
+    }
+
+    if (-not (Test-MsvcInstalled)) {
+        throw "Компоненты MSVC не обнаружены после установки. Перезапустите PowerShell от имени администратора или установите вручную: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+    }
+    Write-Host "Visual Studio C++ Build Tools успешно установлены." -ForegroundColor Green
+} else {
+    Write-Host "Visual Studio C++ Build Tools уже установлены." -ForegroundColor Green
 }
 
 # 6. Клонирование репозитория и сборка собственного .exe / .msi (Tauri 2.0)
 Write-Step "6/6. Скачивание исходников с GitHub и сборка .exe / .msi"
+$RepoUrl = "https://github.com/$Repo.git"
+
 if (Test-Path "$InstallDir\.git") {
-    Push-Location $InstallDir
-    git pull origin $Branch
+    Write-Host "Обновление существующего репозитория в $InstallDir..." -ForegroundColor Gray
+    git -C $InstallDir pull origin $Branch
+    if ($LASTEXITCODE -ne 0) {
+        throw "Не удалось выполнить git pull из $RepoUrl (ветка $Branch)."
+    }
 } else {
-    New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir) | Out-Null
-    git clone --branch $Branch "https://github.com/$Repo.git" $InstallDir
-    Push-Location $InstallDir
+    $parentDir = Split-Path $InstallDir -Parent
+    if ($parentDir) { New-Item -ItemType Directory -Force -Path $parentDir | Out-Null }
+    if (Test-Path $InstallDir) {
+        Remove-Item -Path $InstallDir -Recurse -Force
+    }
+
+    Write-Host "Клонирование $RepoUrl (ветка $Branch)..." -ForegroundColor Gray
+    git clone --branch $Branch $RepoUrl $InstallDir
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$InstallDir\package.json")) {
+        throw "Ошибка клонирования репозитория $RepoUrl (ветка $Branch). Проверьте доступ к GitHub и корректность URL, затем повторите запуск."
+    }
 }
 
+Push-Location $InstallDir
 try {
     # Копируем llama-server.exe в src-tauri/binaries как Tauri sidecar
     $sidecarDir = Join-Path $InstallDir "src-tauri\binaries"

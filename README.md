@@ -6,7 +6,7 @@
 
 ## Установка на ПК в один клик (Windows 10/11)
 
-Откройте **PowerShell** (или Windows Terminal) и выполните одну команду
+Откройте **PowerShell** (или Windows Terminal) от имени администратора и выполните одну команду:
 
 ```powershell
 irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1 | iex
