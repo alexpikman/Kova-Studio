@@ -20,9 +20,14 @@ export default function App() {
     rollbackToCheckpoint,
     theme,
     uiStyle,
+    hydrateFromServer,
   } = useKovaStore();
 
   const tokens = getUiTokens(uiStyle);
+
+  useEffect(() => {
+    void hydrateFromServer();
+  }, [hydrateFromServer]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');

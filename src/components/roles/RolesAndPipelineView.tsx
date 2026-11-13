@@ -547,16 +547,20 @@ export const RolesAndPipelineView: React.FC = () => {
                                 'text-[10.5px] font-medium',
                                 stage.status === 'done'
                                   ? 'text-emerald-600 dark:text-emerald-400'
-                                  : stage.status === 'running'
-                                    ? 'text-blue-600 dark:text-blue-400'
-                                    : 'text-zinc-400',
+                                  : stage.status === 'error'
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : stage.status === 'running'
+                                      ? 'text-blue-600 dark:text-blue-400'
+                                      : 'text-zinc-400',
                               )}
                             >
                               {stage.status === 'done'
                                 ? 'Готово'
-                                : stage.status === 'running'
-                                  ? 'В работе...'
-                                  : 'Ожидание'}
+                                : stage.status === 'error'
+                                  ? 'Ошибка'
+                                  : stage.status === 'running'
+                                    ? 'В работе...'
+                                    : 'Ожидание'}
                             </span>
                           </div>
                           <div className="font-display text-sm font-semibold text-zinc-900 dark:text-zinc-100 mt-1.5">
@@ -605,7 +609,14 @@ export const RolesAndPipelineView: React.FC = () => {
                   {selectedStage.shortGoal}
                 </p>
                 {selectedStage.resultNote && (
-                  <div className="mt-2 p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                  <div
+                    className={cn(
+                      'mt-2 p-2.5 rounded-lg border text-xs flex items-center gap-2',
+                      selectedStage.status === 'error'
+                        ? 'border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300'
+                        : 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
+                    )}
+                  >
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
                     <span>{selectedStage.resultNote}</span>
                   </div>

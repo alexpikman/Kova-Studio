@@ -44,8 +44,7 @@ export const INITIAL_SSH_HOSTS: SshHostEntry[] = [
     identityFile: '%USERPROFILE%\\.ssh\\id_ed25519_kova',
     forwardAgent: false,
     strictHostKeyChecking: 'accept-new',
-    status: 'connected',
-    lastChecked: 'Проверено · OpenSSH 9.5',
+    status: 'untested',
   },
   {
     id: 'host-staging',

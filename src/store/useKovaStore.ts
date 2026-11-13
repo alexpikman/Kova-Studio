@@ -1,32 +1,43 @@
 import { create } from 'zustand';
-import { INITIAL_LOCAL_MODELS } from '../data/curatedModels';
 import {
   INITIAL_DIRECTIVES,
   INITIAL_PERMISSIONS,
   INITIAL_PIPELINE_STAGES,
   INITIAL_ROLES,
 } from '../data/rolesAndRules';
-import {
-  buildAgentReply,
-  INITIAL_CHECKPOINTS,
-  INITIAL_PROJECT_FILES,
-  INITIAL_SESSIONS,
-} from '../data/workspaceSeed';
+import { INITIAL_SESSIONS } from '../data/workspaceSeed';
 import {
   INITIAL_GITHUB_SETTINGS,
   INITIAL_SSH_HOSTS,
   INITIAL_SSH_KEYS,
   INITIAL_SSH_SETTINGS,
 } from '../data/sshGithubSeed';
+import {
+  INITIAL_EXECUTION_ENV,
+  INITIAL_FREE_PROVIDERS,
+  INITIAL_GATEWAYS,
+  INITIAL_MEMORY_DOCS,
+  INITIAL_SKILLS,
+  INITIAL_SUBAGENT_CONFIG,
+} from '../data/openKovaSeed';
 import type {
+  AgentMemoryDoc,
+  AgentMemoryKey,
   AgentMode,
+  AgentSkill,
   AppSettings,
   AppTab,
   ChatSession,
   ChatVisibilitySettings,
   Checkpoint,
+  ExecutionEnvConfig,
+  ExecutionEnvKind,
+  FreeProviderProfile,
+  GatewayChannelConfig,
+  GatewayPlatform,
   GitHubAccessSettings,
   GpuBackend,
+  HardwareProfile,
   InferenceSettings,
   LocalModel,
   ModelCatalogItem,
@@ -35,13 +46,18 @@ import type {
   PermissionPolicy,
   PermissionRule,
   PipelineStage,
+  ProjectActionLogEntry,
   ProjectFile,
+  ProjectFolderSource,
+  ProjectRecord,
   ServerStatus,
   SettingsSectionId,
   SshAlgorithm,
   SshGlobalSettings,
   SshHostEntry,
   SshKeyProfile,
+  SubagentConfig,
+  SubagentRun,
   TrayNotification,
   UiStylePreset,
 } from '../types/kova';
@@ -51,20 +67,58 @@ interface DownloadQueuePayload {
   name: string;
   quant: string;
   filename: string;
+  downloadUrl: string;
   sizeGb: number;
+  totalBytes?: number;
   minVramGb: number;
   minRamGb: number;
   license: string;
-  sha256: string;
+  sha256?: string | null;
+}
+
+export interface SaveProjectPayload {
+  id?: string;
+  name: string;
+  description?: string;
+  folderSource: ProjectFolderSource;
+  folderPath?: string;
+  allowedTools?: string[];
+  defaultModelId?: string;
+  sshConfig?: {
+    host: string;
+    port?: number;
+    user: string;
+    remotePath: string;
+    authType: 'key' | 'agent' | 'password';
+    keyPath?: string;
+    password?: string;
+  };
+  githubConfig?: {
+    repo: string;
+    branch?: string;
+    authMethod?: 'public' | 'pat' | 'ssh';
+    token?: string;
+    localClonePath?: string;
+  };
 }
 
 interface KovaStore {
+  hydrated: boolean;
   activeTab: AppTab;
   theme: 'dark' | 'light';
   uiStyle: UiStylePreset;
   settingsSection: SettingsSectionId;
   chatVisibility: ChatVisibilitySettings;
   trayOpen: boolean;
+
+  hardwareProfile: HardwareProfile | null;
+  hardwareLoading: boolean;
+  hardwareError: string | null;
+
+  projects: ProjectRecord[];
+  activeProjectId: string;
+  projectLogs: ProjectActionLogEntry[];
+  projectsLoading: boolean;
 
   sessions: ChatSession[];
   activeSessionId: string;
@@ -105,6 +159,37 @@ interface KovaStore {
   sshSettings: SshGlobalSettings;
   githubAccess: GitHubAccessSettings;
 
+  freeProviders: FreeProviderProfile[];
+  activeProviderId: string;
+  skills: AgentSkill[];
+  memoryDocs: AgentMemoryDoc[];
+  subagentConfig: SubagentConfig;
+  subagentRuns: SubagentRun[];
+  executionEnv: ExecutionEnvConfig;
+  gateways: GatewayChannelConfig[];
+
+  hydrateFromServer: () => Promise<void>;
+  refreshHardwareProfile: (targetDir?: string) => Promise<void>;
+  refreshLocalModels: () => Promise<void>;
+  refreshProjects: () => Promise<void>;
+  refreshProjectFiles: (projectId?: string) => Promise<void>;
+  refreshProjectLogs: (projectId?: string) => Promise<void>;
+
+  saveProject: (payload: SaveProjectPayload) => Promise<{ ok: boolean; project?: ProjectRecord; error?: string }>;
+  selectProject: (projectId: string) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<{ ok: boolean }>;
+  createOrWriteProjectFile: (
+    filePath: string,
+    content: string,
+    summary?: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  execDirectCommand: (command: string) => Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>;
+  runProjectGitAction: (
+    action: 'status' | 'diff' | 'log' | 'commit' | 'fetch' | 'push' | 'init',
+    message?: string,
+  ) => Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>;
+  undoLastProjectAction: () => Promise<{ ok: boolean; message: string }>;
+
   setActiveTab: (tab: AppTab) => void;
   openSettingsSection: (section: SettingsSectionId) => void;
   setSettingsSection: (section: SettingsSectionId) => void;
@@ -127,28 +212,30 @@ interface KovaStore {
   addCustomDirective: (directive: Omit<ModelDirective, 'id' | 'isCustom'>) => void;
   setPipelineConfig: (name: string, stack: string) => void;
   updateStageRole: (stageId: string, roleId: string) => void;
-  runSinglePipelineStage: (stageId: string) => void;
-  runFullPipeline: () => void;
+  runSinglePipelineStage: (stageId: string) => Promise<void>;
+  runFullPipeline: () => Promise<void>;
   resetPipeline: () => void;
 
-  selectFile: (path: string, switchToPreview?: boolean) => void;
+  selectFile: (path: string, switchToPreview?: boolean) => Promise<void>;
   toggleFileContext: (path: string) => void;
   setIncludeProjectTree: (include: boolean) => void;
   setIncludeTerminalOutput: (include: boolean) => void;
 
-  sendPrompt: (prompt: string) => void;
-  applyDiff: (messageId: string) => void;
+  sendPrompt: (prompt: string) => Promise<void>;
+  applyDiff: (messageId: string) => Promise<void>;
   rejectDiff: (messageId: string) => void;
-  runCommand: (messageId: string, simulateFailure?: boolean) => void;
+  runCommand: (messageId: string) => Promise<void>;
   skipCommand: (messageId: string) => void;
   diagnoseCommandError: (messageId: string) => void;
-  rollbackToCheckpoint: (checkpointId: string) => void;
+  rollbackToCheckpoint: (checkpointId: string) => Promise<void>;
 
-  selectLocalModel: (modelId: string) => void;
-  deleteLocalModel: (modelId: string) => void;
-  startDownload: (payload: DownloadQueuePayload) => void;
-  startDownloadFromCatalog: (item: ModelCatalogItem, quant?: string) => void;
-  togglePauseDownload: (modelId: string) => void;
+  selectLocalModel: (modelId: string) => Promise<{ ok: boolean; error?: string }>;
+  deleteLocalModel: (modelId: string) => Promise<void>;
+  startDownload: (payload: DownloadQueuePayload) => Promise<{ ok: boolean; error?: string }>;
+  startDownloadFromCatalog: (item: ModelCatalogItem, quant?: string) => Promise<{ ok: boolean; error?: string }>;
+  togglePauseDownload: (modelId: string) => Promise<void>;
+  importLocalModelFile: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
+  pullOllamaModel: (modelName: string, ollamaUrl?: string) => Promise<{ ok: boolean; error?: string }>;
 
   updateInferenceSettings: (patch: Partial<InferenceSettings>) => void;
   updateAppSettings: (patch: Partial<AppSettings>) => void;
@@ -167,23 +254,50 @@ interface KovaStore {
   addSshHost: (host: Omit<SshHostEntry, 'id' | 'status'>) => void;
   updateSshHost: (hostId: string, patch: Partial<SshHostEntry>) => void;
   deleteSshHost: (hostId: string) => void;
-  testSshHostConnection: (hostId: string) => void;
+  testSshHostConnection: (hostId: string) => Promise<void>;
   updateSshSettings: (patch: Partial<SshGlobalSettings>) => void;
   updateGitHubAccess: (patch: Partial<GitHubAccessSettings>) => void;
   verifyGitHubAccess: () => Promise<void>;
+
+  setActiveProvider: (providerId: string) => void;
+  updateFreeProvider: (providerId: string, patch: Partial<FreeProviderProfile>) => void;
+  fetchProviderModels: (providerId: string) => Promise<void>;
+
+  toggleSkill: (skillId: string) => void;
+  addSkill: (payload: {
+    title: string;
+    category: AgentSkill['category'];
+    triggerHint: string;
+    contentMarkdown: string;
+    source?: AgentSkill['source'];
+  }) => void;
+  updateSkill: (skillId: string, patch: Partial<AgentSkill>) => void;
+  deleteSkill: (skillId: string) => void;
+  learnSkillFromMessage: (messageId: string) => void;
+
+  updateMemoryDoc: (key: AgentMemoryKey, content: string) => void;
+  appendMemoryFact: (fact: string) => void;
+
+  updateSubagentConfig: (patch: Partial<SubagentConfig>) => void;
+  launchSubagent: (payload: {
+    title?: string;
+    prompt: string;
+    roleId?: string;
+    providerId?: string;
+  }) => Promise<void>;
+  clearCompletedSubagents: () => void;
+
+  setActiveExecutionEnv: (env: ExecutionEnvKind) => void;
+  updateExecutionEnv: (patch: Partial<ExecutionEnvConfig>) => void;
+
+  updateGateway: (platform: GatewayPlatform, patch: Partial<GatewayChannelConfig>) => void;
+  verifyTelegramGateway: () => Promise<void>;
 }
 
-const downloadTimers = new Map<string, ReturnType<typeof setInterval>>();
+let modelPollTimer: ReturnType<typeof setInterval> | null = null;
 
 function nowTime(): string {
-  const d = new Date();
-  return d.toTimeString().slice(0, 8);
-}
-
-function resolveBackendLabel(pref: GpuBackend): 'CUDA 12.4' | 'Vulkan 1.3' | 'CPU AVX2' {
-  if (pref === 'cpu') return 'CPU AVX2';
-  if (pref === 'vulkan') return 'Vulkan 1.3';
-  return 'CUDA 12.4';
+  return new Date().toTimeString().slice(0, 8);
 }
 
 const FULL_CHAT_VISIBILITY: ChatVisibilitySettings = {
@@ -191,12 +305,16 @@ const FULL_CHAT_VISIBILITY: ChatVisibilitySettings = {
   showProjectTree: true,
   showLocalModels: true,
   showSessionHistory: true,
+  showSkillsMemoryTab: true,
   showRightInspector: true,
   showMascot: true,
   showTelemetry: true,
+  showFreeProviderCard: true,
   showInferenceControls: true,
+  showSubagentsPanel: true,
   showActiveContext: true,
   showToolbar: true,
+  showExecutionEnvBar: true,
   showTaskBanner: true,
   showMessageHeaders: true,
   showTimestamps: true,
@@ -209,13 +327,41 @@ const FULL_CHAT_VISIBILITY: ChatVisibilitySettings = {
   showComposerStatusRow: true,
 };
 
+function ensureDownloadPolling(get: () => KovaStore) {
+  if (modelPollTimer) return;
+  modelPollTimer = setInterval(() => {
+    const models = get().localModels;
+    const hasActive = models.some(
+      (m) => m.status === 'downloading' || m.status === 'queued' || m.status === 'verifying',
+    );
+    if (!hasActive) {
+      if (modelPollTimer) {
+        clearInterval(modelPollTimer);
+        modelPollTimer = null;
+      }
+      return;
+    }
+    void get().refreshLocalModels();
+  }, 450);
+}
+
 export const useKovaStore = create<KovaStore>((set, get) => ({
+  hydrated: false,
   activeTab: 'workstation',
   theme: 'dark',
   uiStyle: 'cline-vscode',
   settingsSection: 'ui-chat',
   chatVisibility: FULL_CHAT_VISIBILITY,
   trayOpen: false,
+
+  hardwareProfile: null,
+  hardwareLoading: false,
+  hardwareError: null,
+
+  projects: [],
+  activeProjectId: '',
+  projectLogs: [],
+  projectsLoading: false,
 
   sessions: INITIAL_SESSIONS,
   activeSessionId: INITIAL_SESSIONS[0].id,
@@ -227,43 +373,39 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
   permissions: INITIAL_PERMISSIONS,
   directives: INITIAL_DIRECTIVES,
   pipelineStages: INITIAL_PIPELINE_STAGES,
-  pipelineProjectName: 'Kova Desktop CRM',
-  pipelineStack: 'Tauri 2.0 · Rust · React 19 · SQLite',
+  pipelineProjectName: 'Kova Project',
+  pipelineStack: 'TypeScript · Node · React',
   pipelineRunning: false,
 
-  files: INITIAL_PROJECT_FILES,
-  selectedFilePath: INITIAL_PROJECT_FILES[0].path,
+  files: [],
+  selectedFilePath: '',
   includeProjectTree: true,
   includeTerminalOutput: true,
-  terminalHistory: [
-    'PS C:\\Projects\\kova-studio> .\\llama-server.exe --version',
-    'version: b4812 (win-x64-cuda-12.4 / vulkan-1.3)',
-    'HTTP server listening on http://127.0.0.1:8080',
-  ],
+  terminalHistory: [],
 
-  checkpoints: INITIAL_CHECKPOINTS,
+  checkpoints: [],
 
-  localModels: INITIAL_LOCAL_MODELS,
-  activeModelId: INITIAL_LOCAL_MODELS[0].id,
-  serverStatus: 'ready',
+  localModels: [],
+  activeModelId: '',
+  serverStatus: 'stopped',
   tokensPerSec: 0,
-  vramUsedGb: 5.8,
-  ramUsedGb: 2.1,
+  vramUsedGb: 0,
+  ramUsedGb: 0,
 
   inferenceSettings: {
     gpuBackend: 'auto',
-    detectedGpuName: 'NVIDIA GeForce RTX 4070 Laptop (8 GB)',
-    detectedBackend: 'CUDA 12.4',
+    detectedGpuName: 'Определение оборудования...',
+    detectedBackend: 'CPU',
     temperature: 0.2,
     contextSize: 16384,
     gpuLayers: 99,
-    maxVramGb: 8.0,
-    maxRamGb: 32.0,
+    maxVramGb: 0,
+    maxRamGb: 8,
   },
 
   appSettings: {
-    modelsDir: '%APPDATA%\\KovaStudio\\models\\',
-    llamaServerPath: '%LOCALAPPDATA%\\KovaStudio\\bin\\llama-server.exe',
+    modelsDir: '~/.kova-studio/models',
+    llamaServerPath: 'llama-server',
     autoCheckSha256: true,
     includeOpenFilesByDefault: true,
     includeTreeByDefault: true,
@@ -271,15 +413,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
     cloudFallbackKey: '',
   },
 
-  notifications: [
-    {
-      id: 'notif-1',
-      title: 'llama-server.exe готов к работе',
-      detail: 'Модель Qwen2.5-Coder-7B-Instruct (Q4_K_M) загружена в CUDA 12.4.',
-      timestamp: '00:05:10',
-      read: false,
-    },
-  ],
+  notifications: [],
 
   sshKeys: INITIAL_SSH_KEYS,
   activeSshKeyId: INITIAL_SSH_KEYS[0].id,
@@ -287,8 +421,379 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
   sshSettings: INITIAL_SSH_SETTINGS,
   githubAccess: INITIAL_GITHUB_SETTINGS,
 
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  freeProviders: INITIAL_FREE_PROVIDERS,
+  activeProviderId: INITIAL_FREE_PROVIDERS[0].id,
+  skills: INITIAL_SKILLS,
+  memoryDocs: INITIAL_MEMORY_DOCS,
+  subagentConfig: INITIAL_SUBAGENT_CONFIG,
+  subagentRuns: [],
+  executionEnv: INITIAL_EXECUTION_ENV,
+  gateways: INITIAL_GATEWAYS,
 
+  hydrateFromServer: async () => {
+    if (get().hydrated) return;
+    set({ hydrated: true });
+    await Promise.all([
+      get().refreshHardwareProfile(),
+      get().refreshLocalModels(),
+      get().refreshProjects(),
+    ]);
+  },
+
+  refreshHardwareProfile: async (targetDir) => {
+    set({ hardwareLoading: true, hardwareError: null });
+    try {
+      const qs = targetDir ? `?dir=${encodeURIComponent(targetDir)}` : '';
+      const res = await fetch(`/api/hardware${qs}`);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        hardware?: HardwareProfile;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.hardware) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const hw = data.hardware;
+      const primaryGpu = hw.gpus[0];
+      const backendPref: GpuBackend =
+        hw.recommendedBackend === 'cuda'
+          ? 'cuda'
+          : hw.recommendedBackend === 'rocm' || hw.recommendedBackend === 'metal'
+            ? 'vulkan'
+            : 'cpu';
+
+      set((s) => ({
+        hardwareProfile: hw,
+        hardwareLoading: false,
+        hardwareError: null,
+        inferenceSettings: {
+          ...s.inferenceSettings,
+          gpuBackend: backendPref,
+          detectedGpuName: hw.gpuDetected && primaryGpu ? primaryGpu.name : `CPU only (${hw.cpu.model})`,
+          detectedBackend: hw.backendVersion,
+          gpuLayers: hw.gpuDetected ? 99 : 0,
+          maxVramGb: hw.totalVramGb,
+          maxRamGb: hw.ram.totalGb,
+        },
+        ramUsedGb: Number((hw.ram.totalGb - hw.ram.freeGb).toFixed(2)),
+      }));
+    } catch (err) {
+      set({
+        hardwareLoading: false,
+        hardwareError: err instanceof Error ? err.message : 'Не удалось определить параметры системы',
+      });
+    }
+  },
+
+  refreshLocalModels: async () => {
+    try {
+      const res = await fetch('/api/models/local');
+      const data = (await res.json()) as {
+        ok?: boolean;
+        models?: LocalModel[];
+        activeModelId?: string;
+        modelsDir?: string;
+      };
+      if (!res.ok || !data.ok) return;
+
+      const models = data.models ?? [];
+      const activeId = data.activeModelId ?? '';
+      const hasActiveDl = models.some(
+        (m) => m.status === 'downloading' || m.status === 'queued' || m.status === 'verifying',
+      );
+      if (hasActiveDl) {
+        ensureDownloadPolling(get);
+      }
+
+      set((s) => ({
+        localModels: models,
+        activeModelId: activeId,
+        serverStatus: activeId ? 'ready' : 'stopped',
+        appSettings: data.modelsDir ? { ...s.appSettings, modelsDir: data.modelsDir } : s.appSettings,
+      }));
+    } catch {
+      // ignore transient poll failure
+    }
+  },
+
+  refreshProjects: async () => {
+    set({ projectsLoading: true });
+    try {
+      const res = await fetch('/api/projects');
+      const data = (await res.json()) as {
+        ok?: boolean;
+        projects?: ProjectRecord[];
+        activeProjectId?: string;
+      };
+      if (!res.ok || !data.ok) {
+        set({ projectsLoading: false });
+        return;
+      }
+      const projects = data.projects ?? [];
+      const activeProjectId = data.activeProjectId || projects[0]?.id || '';
+      const activeProj = projects.find((p) => p.id === activeProjectId);
+
+      set((s) => ({
+        projects,
+        activeProjectId,
+        projectsLoading: false,
+        executionEnv: activeProj
+          ? { ...s.executionEnv, localWorkdir: activeProj.folderPath }
+          : s.executionEnv,
+      }));
+
+      if (activeProjectId) {
+        await Promise.all([
+          get().refreshProjectFiles(activeProjectId),
+          get().refreshProjectLogs(activeProjectId),
+        ]);
+      } else {
+        set({ files: [], selectedFilePath: '', projectLogs: [] });
+      }
+    } catch {
+      set({ projectsLoading: false });
+    }
+  },
+
+  refreshProjectFiles: async (projectId) => {
+    const id = projectId || get().activeProjectId;
+    if (!id) {
+      set({ files: [], selectedFilePath: '' });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/files`);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        files?: Array<{
+          path: string;
+          name: string;
+          folder: string;
+          language: string;
+          sizeBytes: number;
+          tokensEstimate: number;
+        }>;
+      };
+      if (!res.ok || !data.ok || !data.files) return;
+
+      const existingMap = new Map<string, ProjectFile>();
+      for (const f of get().files) {
+        existingMap.set(f.path, f);
+      }
+
+      const nextFiles: ProjectFile[] = data.files.map((item) => {
+        const prev = existingMap.get(item.path);
+        return {
+          path: item.path,
+          name: item.name,
+          folder: item.folder,
+          language: item.language,
+          sizeBytes: item.sizeBytes,
+          content: prev?.content ?? '',
+          originalContent: prev?.originalContent ?? '',
+          inContext: prev?.inContext ?? false,
+          tokensEstimate: item.tokensEstimate,
+        };
+      });
+
+      const currentSel = get().selectedFilePath;
+      const nextSel =
+        currentSel && nextFiles.some((f) => f.path === currentSel)
+          ? currentSel
+          : nextFiles[0]?.path ?? '';
+
+      set({ files: nextFiles, selectedFilePath: nextSel });
+    } catch {
+      // keep state
+    }
+  },
+
+  refreshProjectLogs: async (projectId) => {
+    const id = projectId || get().activeProjectId;
+    if (!id) {
+      set({ projectLogs: [] });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/logs`);
+      const data = (await res.json()) as { ok?: boolean; logs?: ProjectActionLogEntry[] };
+      if (res.ok && data.ok && Array.isArray(data.logs)) {
+        set({ projectLogs: data.logs });
+      }
+    } catch {
+      // ignore
+    }
+  },
+
+  saveProject: async (payload) => {
+    const url = payload.id ? `/api/projects/${encodeURIComponent(payload.id)}` : '/api/projects';
+    const method = payload.id ? 'PUT' : 'POST';
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json()) as { ok?: boolean; project?: ProjectRecord; error?: string };
+      if (!res.ok || !data.ok || !data.project) {
+        return { ok: false, error: data.error || `Ошибка сохранения проекта (HTTP ${res.status})` };
+      }
+
+      await get().refreshProjects();
+      set((s) => ({
+        notifications: [
+          {
+            id: `notif-${Date.now()}`,
+            title: `Проект «${data.project!.name}» подключён`,
+            detail: data.project!.folderPath,
+            timestamp: nowTime(),
+            read: false,
+          },
+          ...s.notifications,
+        ],
+      }));
+      return { ok: true, project: data.project };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Сетевая ошибка сохранения проекта' };
+    }
+  },
+
+  selectProject: async (projectId) => {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/activate`, {
+        method: 'POST',
+      });
+      if (!res.ok) return;
+      const proj = get().projects.find((p) => p.id === projectId);
+      set((s) => ({
+        activeProjectId: projectId,
+        executionEnv: proj ? { ...s.executionEnv, localWorkdir: proj.folderPath } : s.executionEnv,
+      }));
+      await Promise.all([get().refreshProjectFiles(projectId), get().refreshProjectLogs(projectId)]);
+    } catch {
+      // ignore
+    }
+  },
+
+  deleteProject: async (projectId) => {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+        method: 'DELETE',
+      });
+      const data = (await res.json()) as { ok?: boolean };
+      await get().refreshProjects();
+      return { ok: Boolean(data.ok) };
+    } catch {
+      return { ok: false };
+    }
+  },
+
+  createOrWriteProjectFile: async (filePath, content, summary) => {
+    const projectId = get().activeProjectId;
+    if (!projectId) {
+      return { ok: false, error: 'Сначала выберите или создайте проект с папкой' };
+    }
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath, content, summary }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || `HTTP ${res.status}` };
+      }
+      await Promise.all([get().refreshProjectFiles(projectId), get().refreshProjectLogs(projectId)]);
+      await get().selectFile(filePath, true);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Ошибка записи файла' };
+    }
+  },
+
+  execDirectCommand: async (command) => {
+    const projectId = get().activeProjectId;
+    if (!projectId) {
+      return {
+        ok: false,
+        stdout: '',
+        stderr: 'Нет активного проекта. Выберите или создайте проект с папкой.',
+        exitCode: 1,
+      };
+    }
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/exec`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+      error?: string;
+    };
+    await get().refreshProjectLogs(projectId);
+    const outLines = [
+      `$ ${command}`,
+      ...(data.stdout ? data.stdout.split('\n') : []),
+      ...(data.stderr ? data.stderr.split('\n') : []),
+    ];
+    set((s) => ({ terminalHistory: [...s.terminalHistory.slice(-16), ...outLines] }));
+    return {
+      ok: Boolean(data.ok),
+      stdout: data.stdout ?? '',
+      stderr: data.stderr ?? data.error ?? '',
+      exitCode: typeof data.exitCode === 'number' ? data.exitCode : 1,
+    };
+  },
+
+  runProjectGitAction: async (action, message) => {
+    const projectId = get().activeProjectId;
+    if (!projectId) {
+      return { ok: false, stdout: '', stderr: 'Нет активного проекта', exitCode: 1 };
+    }
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/git`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, message }),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+      error?: string;
+    };
+    await get().refreshProjectLogs(projectId);
+    return {
+      ok: Boolean(data.ok),
+      stdout: data.stdout ?? '',
+      stderr: data.stderr ?? data.error ?? '',
+      exitCode: typeof data.exitCode === 'number' ? data.exitCode : 1,
+    };
+  },
+
+  undoLastProjectAction: async () => {
+    const projectId = get().activeProjectId;
+    if (!projectId) {
+      return { ok: false, message: 'Нет активного проекта для отката.' };
+    }
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/undo`, {
+      method: 'POST',
+    });
+    const data = (await res.json()) as { ok?: boolean; message?: string; restoredFile?: string };
+    await Promise.all([get().refreshProjectFiles(projectId), get().refreshProjectLogs(projectId)]);
+    if (get().selectedFilePath) {
+      await get().selectFile(get().selectedFilePath, false);
+    }
+    return {
+      ok: Boolean(data.ok),
+      message: data.message || 'Откат не выполнен',
+    };
+  },
+
+  setActiveTab: (tab) => set({ activeTab: tab }),
   openSettingsSection: (section) => set({ activeTab: 'settings', settingsSection: section }),
   setSettingsSection: (section) => set({ settingsSection: section }),
   setUiStyle: (uiStyle) => set({ uiStyle }),
@@ -300,9 +805,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
 
   applyChatLayoutPreset: (preset) =>
     set(() => {
-      if (preset === 'full') {
-        return { chatVisibility: { ...FULL_CHAT_VISIBILITY } };
-      }
+      if (preset === 'full') return { chatVisibility: { ...FULL_CHAT_VISIBILITY } };
       if (preset === 'cline-focus') {
         return {
           chatVisibility: {
@@ -319,6 +822,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
           showLeftSidebar: false,
           showRightInspector: false,
           showToolbar: false,
+          showExecutionEnvBar: false,
           showTaskBanner: false,
           showMessageHeaders: false,
           showTimestamps: false,
@@ -429,8 +933,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
     }));
   },
 
-  setPipelineConfig: (name, stack) =>
-    set({ pipelineProjectName: name, pipelineStack: stack }),
+  setPipelineConfig: (name, stack) => set({ pipelineProjectName: name, pipelineStack: stack }),
 
   updateStageRole: (stageId, roleId) =>
     set((state) => ({
@@ -449,74 +952,106 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
       })),
     })),
 
-  runSinglePipelineStage: (stageId) => {
-    const stage = get().pipelineStages.find((s) => s.id === stageId);
+  runSinglePipelineStage: async (stageId) => {
+    const state = get();
+    const stage = state.pipelineStages.find((s) => s.id === stageId);
     if (!stage) return;
-    const role = get().roles.find((r) => r.id === stage.assignedRoleId);
-    if (role) {
-      get().setActiveRole(role.id, false);
-    }
+    const role = state.roles.find((r) => r.id === stage.assignedRoleId) ?? state.roles[0];
+    const provider =
+      state.freeProviders.find((p) => p.id === state.activeProviderId) ?? state.freeProviders[0];
 
-    set((state) => ({
+    set((s) => ({
       serverStatus: 'generating',
-      tokensPerSec: 46.2,
-      pipelineStages: state.pipelineStages.map((st) =>
-        st.id === stageId ? { ...st, status: 'running' } : st,
+      pipelineStages: s.pipelineStages.map((st) =>
+        st.id === stageId ? { ...st, status: 'running', resultNote: undefined } : st,
       ),
     }));
 
-    setTimeout(() => {
-      const currProject = get().pipelineProjectName || 'Kova Project';
-      const currStack = get().pipelineStack || 'Tauri 2.0 + Rust';
-      set((state) => ({
-        serverStatus: 'ready',
-        tokensPerSec: 0,
-        pipelineStages: state.pipelineStages.map((st) =>
+    try {
+      const resp = await fetch('/api/providers/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          model: provider.selectedModel,
+          temperature: role.recommendedTemp,
+          messages: [
+            { role: 'system', content: role.systemPrompt },
+            {
+              role: 'user',
+              content: `Проект: ${state.pipelineProjectName} (${state.pipelineStack}). Этап: ${stage.title}. Цель: ${stage.shortGoal}. Артефакт: ${stage.outputArtifact}.`,
+            },
+          ],
+        }),
+      });
+      const json = (await resp.json()) as { ok?: boolean; content?: string; error?: string };
+      if (!resp.ok || !json.ok || !json.content) {
+        throw new Error(json.error || `Провайдер ${provider.name} недоступен (HTTP ${resp.status})`);
+      }
+
+      set((s) => ({
+        serverStatus: s.activeModelId ? 'ready' : 'stopped',
+        pipelineStages: s.pipelineStages.map((st) =>
           st.id === stageId
-            ? {
-                ...st,
-                status: 'done',
-                resultNote: `Выполнено ролью «${role?.name ?? 'Агент'}» для ${currProject} (${currStack}) → ${st.outputArtifact}`,
-              }
+            ? { ...st, status: 'done', resultNote: json.content!.slice(0, 260) }
             : st,
         ),
-        notifications: [
-          {
-            id: `notif-${Date.now()}`,
-            title: `Этап «${stage.title}» завершён`,
-            detail: `Роль: ${role?.name ?? 'Агент'} · Артефакт: ${stage.outputArtifact}`,
-            timestamp: nowTime(),
-            read: false,
-          },
-          ...state.notifications,
-        ],
       }));
-    }, 650);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка запуска этапа';
+      set((s) => ({
+        serverStatus: s.activeModelId ? 'ready' : 'stopped',
+        pipelineStages: s.pipelineStages.map((st) =>
+          st.id === stageId ? { ...st, status: 'error', resultNote: `Ошибка: ${msg}` } : st,
+        ),
+      }));
+    }
   },
 
-  runFullPipeline: () => {
+  runFullPipeline: async () => {
     if (get().pipelineRunning) return;
     get().resetPipeline();
     set({ pipelineRunning: true });
     const stageIds = get().pipelineStages.map((s) => s.id);
-
-    stageIds.forEach((id, index) => {
-      setTimeout(() => {
-        get().runSinglePipelineStage(id);
-        if (index === stageIds.length - 1) {
-          setTimeout(() => {
-            set({ pipelineRunning: false });
-          }, 700);
-        }
-      }, index * 780);
-    });
+    for (const id of stageIds) {
+      await get().runSinglePipelineStage(id);
+    }
+    set({ pipelineRunning: false });
   },
 
-  selectFile: (path, switchToPreview = false) =>
+  selectFile: async (filePath, switchToPreview = false) => {
     set((state) => ({
-      selectedFilePath: path,
+      selectedFilePath: filePath,
       centerPaneMode: switchToPreview ? 'file' : state.centerPaneMode,
-    })),
+    }));
+
+    const projectId = get().activeProjectId;
+    if (!projectId || !filePath) return;
+
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/file?path=${encodeURIComponent(filePath)}`,
+      );
+      const data = (await res.json()) as { ok?: boolean; content?: string };
+      if (!res.ok || !data.ok || typeof data.content !== 'string') return;
+      const content = data.content;
+      set((s) => ({
+        files: s.files.map((f) =>
+          f.path === filePath
+            ? {
+                ...f,
+                content,
+                originalContent: content,
+                tokensEstimate: Math.max(1, Math.round(content.length / 4)),
+              }
+            : f,
+        ),
+      }));
+    } catch {
+      // ignore
+    }
+  },
 
   toggleFileContext: (path) =>
     set((state) => ({
@@ -528,159 +1063,310 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
   setIncludeProjectTree: (include) => set({ includeProjectTree: include }),
   setIncludeTerminalOutput: (include) => set({ includeTerminalOutput: include }),
 
-  sendPrompt: (prompt) => {
+  sendPrompt: async (prompt) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
 
     const state = get();
-    if (state.serverStatus === 'stopped') {
-      set({ serverStatus: 'ready' });
-    }
-
     const sessionId = state.activeSessionId;
     const mode = state.agentMode;
-    const activeRole = state.roles.find((r) => r.id === state.activeRoleId);
-    const userMsgId = `msg-u-${Date.now()}`;
-    const assistantMsgId = `msg-a-${Date.now() + 1}`;
 
-    const replyTemplate = buildAgentReply(trimmed, mode, state.files, {
-      activeRole,
-      permissions: state.permissions,
-      directives: state.directives,
-    });
-    const fullText = replyTemplate.content;
-
-    set((s) => ({
-      centerPaneMode: 'chat',
-      serverStatus: 'generating',
-      tokensPerSec: s.inferenceSettings.gpuBackend === 'cpu' ? 11.4 : 44.6,
-      sessions: s.sessions.map((sess) => {
-        if (sess.id !== sessionId) return sess;
-        const isFirst = sess.messages.length === 0;
-        return {
-          ...sess,
-          title: isFirst ? trimmed.slice(0, 44) : sess.title,
-          updatedAt: 'Сейчас',
-          messages: [
-            ...sess.messages,
-            {
-              id: userMsgId,
-              role: 'user',
-              mode,
-              timestamp: nowTime(),
-              content: trimmed,
-            },
-            {
-              ...replyTemplate,
-              id: assistantMsgId,
-              timestamp: nowTime(),
-              content: '',
-              diff: undefined,
-              command: undefined,
-              isStreaming: true,
-            },
-          ],
-        };
-      }),
-    }));
-
-    // Stream tokens progressively into Zustand store
-    const words = fullText.split(' ');
-    let cursor = 0;
-    const streamTimer = setInterval(() => {
-      cursor = Math.min(words.length, cursor + 4);
-      const chunk = words.slice(0, cursor).join(' ');
-      const done = cursor >= words.length;
-
+    const pushReply = (
+      replyText: string,
+      opts: {
+        roleName?: string;
+        providerLabel?: string;
+        readFiles?: string[];
+        diff?: ChatSession['messages'][number]['diff'];
+        command?: ChatSession['messages'][number]['command'];
+      } = {},
+    ) => {
       set((s) => ({
-        serverStatus: done ? 'ready' : 'generating',
-        tokensPerSec: done
-          ? 0
-          : Number(((s.inferenceSettings.gpuBackend === 'cpu' ? 11.2 : 43.5) + Math.random() * 4.5).toFixed(1)),
-        sessions: s.sessions.map((sess) => {
-          if (sess.id !== sessionId) return sess;
-          return {
-            ...sess,
-            messages: sess.messages.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: chunk,
-                    isStreaming: !done,
-                    diff: done ? replyTemplate.diff : undefined,
-                    command: done ? replyTemplate.command : undefined,
-                  }
-                : m,
-            ),
-          };
-        }),
+        centerPaneMode: 'chat',
+        sessions: s.sessions.map((sess) =>
+          sess.id === sessionId
+            ? {
+                ...sess,
+                title: sess.messages.length === 0 ? trimmed.slice(0, 44) : sess.title,
+                updatedAt: 'Сейчас',
+                messages: [
+                  ...sess.messages,
+                  {
+                    id: `msg-u-${Date.now()}`,
+                    role: 'user',
+                    mode,
+                    timestamp: nowTime(),
+                    content: trimmed,
+                  },
+                  {
+                    id: `msg-a-${Date.now() + 1}`,
+                    role: 'assistant',
+                    mode,
+                    roleName: opts.roleName,
+                    providerLabel: opts.providerLabel,
+                    timestamp: nowTime(),
+                    content: replyText,
+                    readFiles: opts.readFiles,
+                    diff: opts.diff,
+                    command: opts.command,
+                  },
+                ],
+              }
+            : sess,
+        ),
       }));
+    };
 
-      if (done) {
-        clearInterval(streamTimer);
+    // Handle local configuration slash commands
+    if (trimmed.startsWith('/')) {
+      const [cmdRaw, ...restParts] = trimmed.split(/\s+/);
+      const cmd = cmdRaw.toLowerCase();
+      const arg = restParts.join(' ').trim();
+
+      if (cmd === '/subagent') {
+        if (!arg) {
+          pushReply('Укажите задачу для субагента: `/subagent Проверь код проекта`');
+          return;
+        }
+        await get().launchSubagent({ prompt: arg });
+        return;
       }
-    }, 45);
+
+      if (cmd === '/memory') {
+        if (!arg) {
+          pushReply('Укажите факт для сохранения в `MEMORY.md`: `/memory <факт>`');
+          return;
+        }
+        get().appendMemoryFact(arg);
+        pushReply(`Факт сохранён в \`MEMORY.md\`:\n\n- ${arg}`, { roleName: 'OpenKova Memory' });
+        return;
+      }
+
+      if (cmd === '/env') {
+        const nextEnv =
+          arg === 'ssh' || arg === 'docker' || arg === 'local'
+            ? (arg as ExecutionEnvKind)
+            : null;
+        if (!nextEnv) {
+          pushReply(`Текущая среда: \`${state.executionEnv.activeEnv}\`. Доступно: \`/env local\`, \`/env ssh\`, \`/env docker\`.`);
+          return;
+        }
+        get().setActiveExecutionEnv(nextEnv);
+        pushReply(`Среда выполнения переключена на **${nextEnv.toUpperCase()}**.`);
+        return;
+      }
+
+      if (cmd === '/provider') {
+        const matched = state.freeProviders.find(
+          (p) => p.kind.includes(arg.toLowerCase()) || p.name.toLowerCase().includes(arg.toLowerCase()),
+        );
+        if (!arg || !matched) {
+          const list = state.freeProviders.map((p) => `- \`${p.kind}\` (${p.name})`).join('\n');
+          pushReply(`Доступные провайдеры:\n${list}`);
+          return;
+        }
+        get().setActiveProvider(matched.id);
+        pushReply(`Активный провайдер переключён на **${matched.name}** (\`${matched.selectedModel}\`).`);
+        return;
+      }
+
+      if (cmd === '/skill') {
+        if (!arg) {
+          const activeList = state.skills
+            .filter((sk) => sk.enabled)
+            .map((sk) => `- **${sk.title}** (\`${sk.slug}\`)`)
+            .join('\n');
+          pushReply(`Активные навыки (\`SKILL.md\`):\n${activeList}`);
+          return;
+        }
+        get().addSkill({
+          title: arg,
+          category: 'Разработка',
+          triggerHint: 'По ключевым словам в чате',
+          contentMarkdown: `---\nname: ${arg.toLowerCase().replace(/[^a-zа-я0-9]+/gi, '-')}\n---\nИнструкция навыка: ${arg}`,
+          source: 'custom',
+        });
+        pushReply(`Новый навык **«${arg}»** добавлен в \`SKILL.md\`.`);
+        return;
+      }
+    }
+
+    const activeRole = state.roles.find((r) => r.id === state.activeRoleId) ?? state.roles[0];
+    const activeProvider =
+      state.freeProviders.find((p) => p.id === state.activeProviderId) ?? state.freeProviders[0];
+    const activeSkills = state.skills.filter((sk) => sk.enabled);
+    const activeProj = state.projects.find((p) => p.id === state.activeProjectId);
+
+    const systemContext = [
+      activeRole.systemPrompt,
+      state.memoryDocs.map((m) => `### ${m.filename}\n${m.content}`).join('\n\n'),
+      activeSkills.length > 0
+        ? `### Активные навыки\n${activeSkills.map((s) => `- ${s.title}`).join('\n')}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    set({ serverStatus: 'generating' });
+
+    try {
+      if (activeProj) {
+        const res = await fetch(`/api/projects/${encodeURIComponent(activeProj.id)}/task`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: trimmed,
+            mode,
+            provider: {
+              baseUrl: activeProvider.baseUrl,
+              apiKey: activeProvider.apiKey,
+              model: activeProvider.selectedModel,
+              temperature: state.inferenceSettings.temperature,
+              systemPrompt: systemContext,
+            },
+          }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          error?: string;
+          replyText?: string;
+          readFiles?: string[];
+          commandResult?: {
+            command: string;
+            cwd: string;
+            stdout: string;
+            stderr: string;
+            exitCode: number;
+          };
+          proposedCommand?: string;
+          diff?: { filePath: string; oldContent: string; newContent: string; summary: string };
+          usedLiveLlm?: boolean;
+        };
+
+        if (!res.ok || !data.ok) {
+          pushReply(`Ошибка выполнения задачи: ${data.error || `HTTP ${res.status}`}`, {
+            roleName: activeRole.name,
+            providerLabel: activeProj.name,
+          });
+          set({ serverStatus: state.activeModelId ? 'ready' : 'stopped' });
+          return;
+        }
+
+        const cmdObj = data.commandResult
+          ? {
+              id: `cmd-${Date.now()}`,
+              shell: 'sh' as const,
+              command: data.commandResult.command,
+              cwd: data.commandResult.cwd,
+              description: 'Реальное выполнение команды в папке проекта',
+              status: (data.commandResult.exitCode === 0 ? 'success' : 'failed') as 'success' | 'failed',
+              exitCode: data.commandResult.exitCode,
+              output: [
+                `$ ${data.commandResult.command}`,
+                ...(data.commandResult.stdout ? data.commandResult.stdout.split('\n') : []),
+                ...(data.commandResult.stderr ? data.commandResult.stderr.split('\n') : []),
+                `Exit code: ${data.commandResult.exitCode}`,
+              ],
+              canDiagnose: data.commandResult.exitCode !== 0,
+            }
+          : data.proposedCommand
+            ? {
+                id: `cmd-${Date.now()}`,
+                shell: 'sh' as const,
+                command: data.proposedCommand,
+                cwd: activeProj.folderPath,
+                description: 'Команда готова к реальному запуску',
+                status: 'pending' as const,
+                output: [],
+              }
+            : undefined;
+
+        const diffObj = data.diff
+          ? {
+              id: `diff-${Date.now()}`,
+              filePath: data.diff.filePath,
+              summary: data.diff.summary,
+              oldContent: data.diff.oldContent,
+              newContent: data.diff.newContent,
+              status: 'applied' as const,
+            }
+          : undefined;
+
+        pushReply(data.replyText || 'Задача выполнена.', {
+          roleName: activeRole.name,
+          providerLabel: data.usedLiveLlm
+            ? `${activeProvider.name} · ${activeProvider.selectedModel}`
+            : `Проект: ${activeProj.name}`,
+          readFiles: data.readFiles,
+          diff: diffObj,
+          command: cmdObj,
+        });
+
+        await Promise.all([
+          get().refreshProjectFiles(activeProj.id),
+          get().refreshProjectLogs(activeProj.id),
+        ]);
+      } else {
+        // No project selected yet: run real provider chat if reachable, otherwise ask to create/select a project
+        const resp = await fetch('/api/providers/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            baseUrl: activeProvider.baseUrl,
+            apiKey: activeProvider.apiKey,
+            model: activeProvider.selectedModel,
+            temperature: state.inferenceSettings.temperature,
+            messages: [
+              { role: 'system', content: systemContext },
+              { role: 'user', content: trimmed },
+            ],
+          }),
+        });
+        const json = (await resp.json()) as { ok?: boolean; content?: string; error?: string };
+        if (resp.ok && json.ok && json.content) {
+          pushReply(json.content, {
+            roleName: activeRole.name,
+            providerLabel: `${activeProvider.name} · ${activeProvider.selectedModel}`,
+          });
+        } else {
+          pushReply(
+            `Активный проект не выбран, а провайдер **${activeProvider.name}** не ответил (${json.error || `HTTP ${resp.status}`}).\n\n` +
+              `Чтобы работать с реальными файлами, терминалом, Git и \`/undo\`, создайте или выберите проект с папкой на левой панели **«Проекты»**.`,
+            { roleName: activeRole.name },
+          );
+        }
+      }
+    } catch (err) {
+      pushReply(
+        `Ошибка запроса: ${err instanceof Error ? err.message : 'Сетевая ошибка'}`,
+        { roleName: activeRole.name },
+      );
+    } finally {
+      set({ serverStatus: get().activeModelId ? 'ready' : 'stopped' });
+    }
   },
 
-  applyDiff: (messageId) => {
+  applyDiff: async (messageId) => {
     const state = get();
     const activeSession = state.sessions.find((s) => s.id === state.activeSessionId);
     const targetMsg = activeSession?.messages.find((m) => m.id === messageId);
     const diff = targetMsg?.diff;
     if (!diff || diff.status !== 'pending') return;
 
-    // Create automatic checkpoint before writing files
-    const snapshot: Record<string, string> = {};
-    state.files.forEach((f) => {
-      snapshot[f.path] = f.content;
-    });
-
-    const cpId = `cp-${String(state.checkpoints.length + 1).padStart(3, '0')}`;
-    const newCheckpoint: Checkpoint = {
-      id: cpId,
-      label: `Перед правкой ${diff.filePath.split('/').pop()}`,
-      timestamp: nowTime(),
-      actionSummary: diff.summary,
-      filesSnapshot: snapshot,
-    };
+    const writeRes = await get().createOrWriteProjectFile(diff.filePath, diff.newContent, diff.summary);
+    if (!writeRes.ok) return;
 
     set((s) => ({
-      checkpoints: [newCheckpoint, ...s.checkpoints],
-      files: s.files.map((f) =>
-        f.path === diff.filePath
-          ? {
-              ...f,
-              content: diff.newContent,
-              tokensEstimate: Math.round(diff.newContent.length / 3.8),
-            }
-          : f,
-      ),
       sessions: s.sessions.map((sess) =>
         sess.id === s.activeSessionId
           ? {
               ...sess,
               messages: sess.messages.map((m) =>
-                m.id === messageId && m.diff
-                  ? {
-                      ...m,
-                      checkpointId: cpId,
-                      diff: { ...m.diff, status: 'applied', checkpointId: cpId },
-                    }
-                  : m,
+                m.id === messageId && m.diff ? { ...m, diff: { ...m.diff, status: 'applied' } } : m,
               ),
             }
           : sess,
       ),
-      notifications: [
-        {
-          id: `notif-${Date.now()}`,
-          title: `Дифф применён (${diff.filePath.split('/').pop()})`,
-          detail: `Создан Checkpoint ${cpId} для безопасного отката.`,
-          timestamp: nowTime(),
-          read: false,
-        },
-        ...s.notifications,
-      ],
     }));
   },
 
@@ -691,9 +1377,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
           ? {
               ...sess,
               messages: sess.messages.map((m) =>
-                m.id === messageId && m.diff
-                  ? { ...m, diff: { ...m.diff, status: 'rejected' } }
-                  : m,
+                m.id === messageId && m.diff ? { ...m, diff: { ...m.diff, status: 'rejected' } } : m,
               ),
             }
           : sess,
@@ -701,9 +1385,37 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
     }));
   },
 
-  runCommand: (messageId, simulateFailure = false) => {
+  runCommand: async (messageId) => {
     const state = get();
     const sessionId = state.activeSessionId;
+    const targetMsg = state.sessions
+      .find((s) => s.id === sessionId)
+      ?.messages.find((m) => m.id === messageId);
+    const cmd = targetMsg?.command;
+    if (!cmd) return;
+
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId
+          ? {
+              ...sess,
+              messages: sess.messages.map((m) =>
+                m.id === messageId && m.command
+                  ? { ...m, command: { ...m.command, status: 'running', output: [`$ ${cmd.command}`] } }
+                  : m,
+              ),
+            }
+          : sess,
+      ),
+    }));
+
+    const result = await get().execDirectCommand(cmd.command);
+    const lines = [
+      `$ ${cmd.command}`,
+      ...(result.stdout ? result.stdout.split('\n') : []),
+      ...(result.stderr ? result.stderr.split('\n') : []),
+      `Exit code: ${result.exitCode}`,
+    ];
 
     set((s) => ({
       sessions: s.sessions.map((sess) =>
@@ -716,8 +1428,10 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
                       ...m,
                       command: {
                         ...m.command,
-                        status: 'running',
-                        output: [`PS ${m.command.cwd}> ${m.command.command}`],
+                        status: result.exitCode === 0 ? 'success' : 'failed',
+                        exitCode: result.exitCode,
+                        output: lines,
+                        canDiagnose: result.exitCode !== 0,
                       },
                     }
                   : m,
@@ -726,71 +1440,6 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
           : sess,
       ),
     }));
-
-    setTimeout(() => {
-      const currentState = get();
-      const targetMsg = currentState.sessions
-        .find((s) => s.id === sessionId)
-        ?.messages.find((m) => m.id === messageId);
-      const cmd = targetMsg?.command;
-      if (!cmd) return;
-
-      const bridgeFile = currentState.files.find((f) => f.path.endsWith('llama_bridge.rs'));
-      const missingImportBug = simulateFailure || (bridgeFile && !bridgeFile.content.includes('has_nvidia_cuda') && cmd.command.includes('cargo check'));
-
-      const lines = missingImportBug
-        ? [
-            `PS ${cmd.cwd}> ${cmd.command}`,
-            '    Checking kova-studio v0.1.0 (C:\\Projects\\kova-studio\\src-tauri)',
-            'error[E0425]: cannot find function `has_nvidia_cuda` or `--flash-attn` validation',
-            '  --> src\\llama_bridge.rs:26:12',
-            '   |',
-            '26 |     let (backend, ngl) = detect_gpu_layers(&gpu_pref);',
-            '   |                          ^^^^^^^^^^^^^^^^^ GPU auto-probe not applied yet',
-            'error: could not compile `kova-studio` (lib) due to 1 previous error',
-          ]
-        : [
-            `PS ${cmd.cwd}> ${cmd.command}`,
-            '    Checking kova-studio v0.1.0 (C:\\Projects\\kova-studio\\src-tauri)',
-            '    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.42s',
-            'Exit code: 0',
-          ];
-
-      set((s) => ({
-        terminalHistory: [...s.terminalHistory.slice(-8), ...lines],
-        sessions: s.sessions.map((sess) =>
-          sess.id === sessionId
-            ? {
-                ...sess,
-                messages: sess.messages.map((m) =>
-                  m.id === messageId && m.command
-                    ? {
-                        ...m,
-                        command: {
-                          ...m.command,
-                          status: missingImportBug ? 'failed' : 'success',
-                          exitCode: missingImportBug ? 101 : 0,
-                          output: lines,
-                          canDiagnose: Boolean(missingImportBug),
-                        },
-                      }
-                    : m,
-                ),
-              }
-            : sess,
-        ),
-        notifications: [
-          {
-            id: `notif-${Date.now()}`,
-            title: missingImportBug ? 'Ошибка выполнения команды' : 'Команда завершена успешно',
-            detail: cmd.command,
-            timestamp: nowTime(),
-            read: false,
-          },
-          ...s.notifications,
-        ],
-      }));
-    }, 650);
   },
 
   skipCommand: (messageId) => {
@@ -817,49 +1466,19 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
       ?.messages.find((m) => m.id === messageId);
     if (!targetMsg?.command) return;
 
-    get().sendPrompt(
-      `Проанализируй ошибку компиляции (${targetMsg.command.command}) и предложи исправление в llama_bridge.rs`,
+    void get().sendPrompt(
+      `Проанализируй ошибку выполнения команды "${targetMsg.command.command}":\n${targetMsg.command.output.join('\n')}`,
     );
   },
 
-  rollbackToCheckpoint: (checkpointId) => {
-    const state = get();
-    const cp = state.checkpoints.find((c) => c.id === checkpointId);
-    if (!cp) return;
-
+  rollbackToCheckpoint: async () => {
+    const res = await get().undoLastProjectAction();
     set((s) => ({
-      files: s.files.map((f) => {
-        const restored = cp.filesSnapshot[f.path];
-        if (restored === undefined) return f;
-        return {
-          ...f,
-          content: restored,
-          tokensEstimate: Math.round(restored.length / 3.8),
-        };
-      }),
-      sessions: s.sessions.map((sess) =>
-        sess.id === s.activeSessionId
-          ? {
-              ...sess,
-              messages: [
-                ...sess.messages,
-                {
-                  id: `msg-rb-${Date.now()}`,
-                  role: 'assistant',
-                  mode: s.agentMode,
-                  timestamp: nowTime(),
-                  content: `Выполнен откат файловой системы к Checkpoint **${cp.id}** (*${cp.label}* от ${cp.timestamp}). Все изменения после этой точки отменены.`,
-                  checkpointId: cp.id,
-                },
-              ],
-            }
-          : sess,
-      ),
       notifications: [
         {
           id: `notif-${Date.now()}`,
-          title: `Откат к ${cp.id}`,
-          detail: cp.label,
+          title: res.ok ? 'Откат /undo выполнен' : 'Откат невозможен',
+          detail: res.message,
           timestamp: nowTime(),
           read: false,
         },
@@ -868,267 +1487,196 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
     }));
   },
 
-  selectLocalModel: (modelId) => {
-    const model = get().localModels.find((m) => m.id === modelId);
-    if (!model || model.status !== 'ready') return;
+  selectLocalModel: async (modelId) => {
+    try {
+      const res = await fetch(`/api/models/local/${encodeURIComponent(modelId)}/activate`, {
+        method: 'POST',
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string; activeModelId?: string };
+      if (!res.ok || !data.ok) {
+        set((s) => ({
+          notifications: [
+            {
+              id: `notif-${Date.now()}`,
+              title: 'Ошибка активации модели',
+              detail: data.error || `HTTP ${res.status}`,
+              timestamp: nowTime(),
+              read: false,
+            },
+            ...s.notifications,
+          ],
+        }));
+        return { ok: false, error: data.error };
+      }
 
-    set({
-      activeModelId: modelId,
-      serverStatus: 'loading',
-      tokensPerSec: 0,
-    });
-
-    setTimeout(() => {
-      const current = get();
-      const gpuLim = current.inferenceSettings.maxVramGb;
-      const fitsVram = model.minVramGb <= gpuLim;
-      const usedVram = fitsVram ? model.minVramGb : Number((gpuLim * 0.92).toFixed(1));
-      const spillRam = fitsVram ? 1.8 : Number((model.minVramGb - gpuLim + 2.4).toFixed(1));
-
-      set({
+      await get().refreshLocalModels();
+      const model = get().localModels.find((m) => m.id === modelId);
+      set((s) => ({
+        activeModelId: modelId,
         serverStatus: 'ready',
-        vramUsedGb: usedVram,
-        ramUsedGb: spillRam,
+        vramUsedGb: model ? Math.min(s.inferenceSettings.maxVramGb, model.minVramGb) : 0,
         notifications: [
           {
             id: `notif-${Date.now()}`,
-            title: `Загружена модель ${model.name}`,
-            detail: `Квантизация ${model.quant} · ${usedVram} GB VRAM`,
+            title: `Активирована модель ${model?.name ?? modelId}`,
+            detail: model?.localPath ?? '',
             timestamp: nowTime(),
             read: false,
           },
-          ...current.notifications,
+          ...s.notifications,
         ],
+      }));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Ошибка активации' };
+    }
+  },
+
+  deleteLocalModel: async (modelId) => {
+    try {
+      await fetch(`/api/models/local/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+      await Promise.all([get().refreshLocalModels(), get().refreshHardwareProfile()]);
+    } catch {
+      // ignore
+    }
+  },
+
+  startDownload: async (payload) => {
+    try {
+      const res = await fetch('/api/models/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoId: payload.repoId,
+          name: payload.name,
+          quant: payload.quant,
+          filename: payload.filename,
+          downloadUrl: payload.downloadUrl,
+          sizeGb: payload.sizeGb,
+          totalBytes: payload.totalBytes,
+          minVramGb: payload.minVramGb,
+          minRamGb: payload.minRamGb,
+          license: payload.license,
+          expectedSha256: payload.sha256 ?? null,
+        }),
       });
-    }, 550);
-  },
-
-  deleteLocalModel: (modelId) => {
-    const existingTimer = downloadTimers.get(modelId);
-    if (existingTimer) {
-      clearInterval(existingTimer);
-      downloadTimers.delete(modelId);
-    }
-    set((s) => {
-      const remaining = s.localModels.filter((m) => m.id !== modelId);
-      const nextActive =
-        s.activeModelId === modelId
-          ? remaining.find((m) => m.status === 'ready')?.id ?? ''
-          : s.activeModelId;
-      return {
-        localModels: remaining,
-        activeModelId: nextActive,
-      };
-    });
-  },
-
-  startDownload: (payload) => {
-    const existing = get().localModels.find(
-      (m) => m.repoId === payload.repoId && m.quant === payload.quant,
-    );
-    if (existing) {
-      if (existing.status === 'paused') {
-        get().togglePauseDownload(existing.id);
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || `HTTP ${res.status}` };
       }
-      return;
+      await get().refreshLocalModels();
+      ensureDownloadPolling(get);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Ошибка старта загрузки' };
     }
-
-    const totalBytes = Math.max(1024 * 1024 * 500, Math.round(payload.sizeGb * 1024 * 1024 * 1024));
-    const id = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const dir = get().appSettings.modelsDir.replace(/\\$/, '');
-
-    const newModel: LocalModel = {
-      id,
-      repoId: payload.repoId,
-      name: payload.name,
-      quant: payload.quant,
-      filename: payload.filename,
-      sizeGb: payload.sizeGb,
-      minVramGb: payload.minVramGb,
-      minRamGb: payload.minRamGb,
-      license: payload.license,
-      sha256: payload.sha256,
-      localPath: `${dir}\\${payload.filename}`,
-      status: 'downloading',
-      progressPct: 2,
-      speedMbps: 68.4,
-      downloadedBytes: Math.round(totalBytes * 0.02),
-      totalBytes,
-    };
-
-    set((s) => ({
-      localModels: [newModel, ...s.localModels],
-    }));
-
-    const startIntervalFor = (targetId: string) => {
-      const prev = downloadTimers.get(targetId);
-      if (prev) clearInterval(prev);
-
-      const timer = setInterval(() => {
-        const curr = get().localModels.find((m) => m.id === targetId);
-        if (!curr || curr.status !== 'downloading') {
-          clearInterval(timer);
-          downloadTimers.delete(targetId);
-          return;
-        }
-
-        const nextPct = Math.min(100, curr.progressPct + 9);
-        const speed = Number((58 + Math.random() * 24).toFixed(1));
-
-        if (nextPct >= 100) {
-          clearInterval(timer);
-          downloadTimers.delete(targetId);
-
-          set((s) => ({
-            localModels: s.localModels.map((m) =>
-              m.id === targetId
-                ? {
-                    ...m,
-                    status: s.appSettings.autoCheckSha256 ? 'verifying' : 'ready',
-                    progressPct: 100,
-                    speedMbps: 0,
-                    downloadedBytes: m.totalBytes,
-                  }
-                : m,
-            ),
-          }));
-
-          if (get().appSettings.autoCheckSha256) {
-            setTimeout(() => {
-              set((s) => ({
-                localModels: s.localModels.map((m) =>
-                  m.id === targetId ? { ...m, status: 'ready' } : m,
-                ),
-                notifications: [
-                  {
-                    id: `notif-${Date.now()}`,
-                    title: `Модель ${curr.name} готова`,
-                    detail: `SHA256 подтверждён · ${curr.quant} (${curr.sizeGb} GB)`,
-                    timestamp: nowTime(),
-                    read: false,
-                  },
-                  ...s.notifications,
-                ],
-              }));
-            }, 900);
-          }
-        } else {
-          set((s) => ({
-            localModels: s.localModels.map((m) =>
-              m.id === targetId
-                ? {
-                    ...m,
-                    progressPct: nextPct,
-                    speedMbps: speed,
-                    downloadedBytes: Math.round((m.totalBytes * nextPct) / 100),
-                  }
-                : m,
-            ),
-          }));
-        }
-      }, 320);
-
-      downloadTimers.set(targetId, timer);
-    };
-
-    startIntervalFor(id);
   },
 
-  startDownloadFromCatalog: (item, quant) => {
+  startDownloadFromCatalog: async (item, quant) => {
     const selectedQuant = quant || item.defaultQuant || 'Q4_K_M';
-    const variant = item.files?.find((f) => f.quant === selectedQuant);
-    const filename =
-      variant?.filename ??
-      `${item.name.toLowerCase().replace(/[^a-z0-9.-]+/g, '-')}-${selectedQuant.toLowerCase()}.gguf`;
+    let variant = item.files?.find((f) => f.quant === selectedQuant);
 
-    get().startDownload({
+    // If catalog item lacks resolved file URL/SHA256, fetch real blob metadata from HF API first
+    if (!variant && item.source === 'huggingface') {
+      try {
+        const res = await fetch(`/api/hf/model?repoId=${encodeURIComponent(item.repoId)}`);
+        const data = (await res.json()) as {
+          files?: Array<{
+            filename: string;
+            quant: string;
+            sizeBytes: number;
+            sizeGb: number;
+            sha256: string | null;
+            downloadUrl: string;
+          }>;
+        };
+        if (res.ok && Array.isArray(data.files) && data.files.length > 0) {
+          variant =
+            data.files.find((f) => f.quant === selectedQuant) ??
+            data.files.find((f) => f.quant.includes('Q4')) ??
+            data.files[0];
+        }
+      } catch {
+        // handled below
+      }
+    }
+
+    if (!variant?.downloadUrl) {
+      return {
+        ok: false,
+        error: `Для ${item.repoId} (${selectedQuant}) не найден прямой файл .gguf. Откройте «Файлы GGUF» и выберите конкретный файл.`,
+      };
+    }
+
+    return get().startDownload({
       repoId: item.repoId,
       name: item.name,
-      quant: selectedQuant,
-      filename,
-      sizeGb: variant?.sizeGb ?? item.sizeGb,
+      quant: variant.quant || selectedQuant,
+      filename: variant.filename,
+      downloadUrl: variant.downloadUrl,
+      sizeGb: variant.sizeGb || item.sizeGb,
+      totalBytes: variant.sizeBytes || undefined,
       minVramGb: item.minVramGb,
       minRamGb: item.minRamGb,
       license: item.license,
-      sha256:
-        variant?.sha256 ??
-        item.sha256 ??
-        '7c8f4e2a9b1d0c3e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e',
+      sha256: variant.sha256 ?? null,
     });
   },
 
-  togglePauseDownload: (modelId) => {
+  togglePauseDownload: async (modelId) => {
     const target = get().localModels.find((m) => m.id === modelId);
     if (!target) return;
+    const action = target.status === 'downloading' ? 'pause' : 'resume';
+    await fetch(`/api/models/download/${encodeURIComponent(modelId)}/${action}`, {
+      method: 'POST',
+    });
+    await get().refreshLocalModels();
+    if (action === 'resume') {
+      ensureDownloadPolling(get);
+    }
+  },
 
-    if (target.status === 'downloading') {
-      const t = downloadTimers.get(modelId);
-      if (t) {
-        clearInterval(t);
-        downloadTimers.delete(modelId);
+  importLocalModelFile: async (filePath) => {
+    try {
+      const res = await fetch('/api/models/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || `HTTP ${res.status}` };
       }
-      set((s) => ({
-        localModels: s.localModels.map((m) =>
-          m.id === modelId ? { ...m, status: 'paused', speedMbps: 0 } : m,
-        ),
-      }));
-    } else if (target.status === 'paused') {
-      set((s) => ({
-        localModels: s.localModels.map((m) =>
-          m.id === modelId ? { ...m, status: 'downloading', speedMbps: 64.2 } : m,
-        ),
-      }));
-      const timer = setInterval(() => {
-        const curr = get().localModels.find((m) => m.id === modelId);
-        if (!curr || curr.status !== 'downloading') {
-          clearInterval(timer);
-          downloadTimers.delete(modelId);
-          return;
-        }
-        const nextPct = Math.min(100, curr.progressPct + 10);
-        if (nextPct >= 100) {
-          clearInterval(timer);
-          downloadTimers.delete(modelId);
-          set((s) => ({
-            localModels: s.localModels.map((m) =>
-              m.id === modelId
-                ? {
-                    ...m,
-                    status: 'ready',
-                    progressPct: 100,
-                    speedMbps: 0,
-                    downloadedBytes: m.totalBytes,
-                  }
-                : m,
-            ),
-          }));
-        } else {
-          set((s) => ({
-            localModels: s.localModels.map((m) =>
-              m.id === modelId
-                ? {
-                    ...m,
-                    progressPct: nextPct,
-                    speedMbps: 67.5,
-                    downloadedBytes: Math.round((m.totalBytes * nextPct) / 100),
-                  }
-                : m,
-            ),
-          }));
-        }
-      }, 320);
-      downloadTimers.set(modelId, timer);
+      await get().refreshLocalModels();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Ошибка импорта' };
+    }
+  },
+
+  pullOllamaModel: async (modelName, ollamaUrl) => {
+    try {
+      const res = await fetch('/api/models/ollama/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelName, ollamaUrl }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || `HTTP ${res.status}` };
+      }
+      await get().refreshLocalModels();
+      ensureDownloadPolling(get);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Ошибка Ollama pull' };
     }
   },
 
   updateInferenceSettings: (patch) =>
-    set((s) => {
-      const next = { ...s.inferenceSettings, ...patch };
-      if (patch.gpuBackend) {
-        next.detectedBackend = resolveBackendLabel(patch.gpuBackend);
-      }
-      return { inferenceSettings: next };
-    }),
+    set((s) => ({
+      inferenceSettings: { ...s.inferenceSettings, ...patch },
+    })),
 
   updateAppSettings: (patch) =>
     set((s) => ({
@@ -1137,9 +1685,8 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
 
   toggleServerPower: () =>
     set((s) => ({
-      serverStatus: s.serverStatus === 'stopped' ? 'ready' : 'stopped',
+      serverStatus: s.serverStatus === 'stopped' ? (s.activeModelId ? 'ready' : 'stopped') : 'stopped',
       tokensPerSec: 0,
-      vramUsedGb: s.serverStatus === 'stopped' ? 5.8 : 0,
     })),
 
   markAllNotificationsRead: () =>
@@ -1161,43 +1708,28 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
 
   addSshKey: ({ name, algorithm, comment, hasPassphrase }) =>
     set((s) => {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '') || 'custom';
-      const prefix = algorithm === 'rsa-4096' ? 'id_rsa' : algorithm === 'ecdsa' ? 'id_ecdsa' : 'id_ed25519';
-      const randBytes = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
-      const pubPrefix =
-        algorithm === 'rsa-4096'
-          ? 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC'
-          : algorithm === 'ecdsa'
-            ? 'ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTIt'
-            : 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI';
-
+      const slug =
+        name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'custom';
+      const prefix =
+        algorithm === 'rsa-4096' ? 'id_rsa' : algorithm === 'ecdsa' ? 'id_ecdsa' : 'id_ed25519';
       const newKey: SshKeyProfile = {
         id: `ssh-key-${Date.now()}`,
         name: name.trim() || `Ключ ${algorithm.toUpperCase()}`,
         algorithm,
         comment: comment.trim() || s.githubAccess.gitUserEmail,
         privateKeyPath: `${s.sshSettings.defaultKeyDir.replace(/\\$/, '')}\\${prefix}_${slug}`,
-        publicKey: `${pubPrefix}${randBytes}KovaStudioGeneratedKey ${comment.trim() || s.githubAccess.gitUserEmail}`,
-        fingerprint: `SHA256:${randBytes.toUpperCase()}vL9mK2pQ`,
+        publicKey: `# Сгенерируйте ключ локально: ssh-keygen -t ${algorithm} -f ~/.ssh/${prefix}_${slug}`,
+        fingerprint: 'Ожидает генерации через ssh-keygen',
         hasPassphrase,
         addedToAgent: s.sshSettings.openSshAgentAutoStart,
         createdAt: new Date().toISOString().slice(0, 10),
       };
-
-      return {
-        sshKeys: [newKey, ...s.sshKeys],
-        activeSshKeyId: newKey.id,
-      };
+      return { sshKeys: [newKey, ...s.sshKeys], activeSshKeyId: newKey.id };
     }),
 
   toggleSshKeyInAgent: (keyId) =>
     set((s) => ({
-      sshKeys: s.sshKeys.map((k) =>
-        k.id === keyId ? { ...k, addedToAgent: !k.addedToAgent } : k,
-      ),
+      sshKeys: s.sshKeys.map((k) => (k.id === keyId ? { ...k, addedToAgent: !k.addedToAgent } : k)),
     })),
 
   deleteSshKey: (keyId) =>
@@ -1210,14 +1742,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
 
   addSshHost: (host) =>
     set((s) => ({
-      sshHosts: [
-        ...s.sshHosts,
-        {
-          ...host,
-          id: `host-${Date.now()}`,
-          status: 'untested',
-        },
-      ],
+      sshHosts: [...s.sshHosts, { ...host, id: `host-${Date.now()}`, status: 'untested' }],
     })),
 
   updateSshHost: (hostId, patch) =>
@@ -1230,36 +1755,62 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
       sshHosts: s.sshHosts.filter((h) => h.id !== hostId),
     })),
 
-  testSshHostConnection: (hostId) => {
+  testSshHostConnection: async (hostId) => {
     const target = get().sshHosts.find((h) => h.id === hostId);
     if (!target) return;
 
-    const activeKey = get().sshKeys.find((k) => k.privateKeyPath === target.identityFile);
-    const ok = Boolean(target.hostName.trim()) && target.port > 0 && target.port <= 65535;
     set((s) => ({
       sshHosts: s.sshHosts.map((h) =>
-        h.id === hostId
-          ? {
-              ...h,
-              status: ok ? 'connected' : 'error',
-              lastChecked: ok
-                ? `Рукопожатие OK (${activeKey ? activeKey.algorithm : 'ed25519'}) · ${nowTime()}`
-                : 'Ошибка параметров хоста',
-            }
-          : h,
+        h.id === hostId ? { ...h, lastChecked: 'Выполняется реальная проверка ssh...' } : h,
       ),
     }));
+
+    try {
+      const res = await fetch('/api/ssh/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hostName: target.hostName,
+          port: target.port,
+          user: target.user,
+          identityFile: target.identityFile,
+          remotePath: '/tmp',
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string; latencyMs?: number };
+      set((s) => ({
+        sshHosts: s.sshHosts.map((h) =>
+          h.id === hostId
+            ? {
+                ...h,
+                status: data.ok ? 'connected' : 'error',
+                lastChecked: data.ok
+                  ? `SSH OK (${data.latencyMs ?? 0} мс) · ${nowTime()}`
+                  : data.error || 'SSH-проверка отклонена',
+              }
+            : h,
+        ),
+      }));
+    } catch (err) {
+      set((s) => ({
+        sshHosts: s.sshHosts.map((h) =>
+          h.id === hostId
+            ? {
+                ...h,
+                status: 'error',
+                lastChecked: err instanceof Error ? err.message : 'Сетевая ошибка SSH',
+              }
+            : h,
+        ),
+      }));
+    }
   },
 
   updateSshSettings: (patch) =>
-    set((s) => ({
-      sshSettings: { ...s.sshSettings, ...patch },
-    })),
+    set((s) => ({ sshSettings: { ...s.sshSettings, ...patch } })),
 
   updateGitHubAccess: (patch) =>
-    set((s) => ({
-      githubAccess: { ...s.githubAccess, ...patch },
-    })),
+    set((s) => ({ githubAccess: { ...s.githubAccess, ...patch } })),
 
   verifyGitHubAccess: async () => {
     const { githubAccess } = get();
@@ -1285,12 +1836,7 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
         error?: string;
         authUser?: string | null;
         grantedScopes?: string[];
-        repo?: {
-          fullName: string;
-          isPrivate: boolean;
-          defaultBranch: string;
-          stars: number;
-        };
+        repo?: { fullName: string; isPrivate: boolean; defaultBranch: string; stars: number };
       };
 
       if (!resp.ok || !data.ok) {
@@ -1329,6 +1875,375 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
           lastVerifyStatus: 'error',
           lastVerifyMessage: err instanceof Error ? err.message : 'Сетевая ошибка при проверке GitHub',
         },
+      }));
+    }
+  },
+
+  setActiveProvider: (providerId) => set({ activeProviderId: providerId }),
+
+  updateFreeProvider: (providerId, patch) =>
+    set((s) => ({
+      freeProviders: s.freeProviders.map((p) => (p.id === providerId ? { ...p, ...patch } : p)),
+    })),
+
+  fetchProviderModels: async (providerId) => {
+    const provider = get().freeProviders.find((p) => p.id === providerId);
+    if (!provider) return;
+
+    set((s) => ({
+      freeProviders: s.freeProviders.map((p) =>
+        p.id === providerId
+          ? { ...p, status: 'checking', lastCheckMessage: 'Запрос списка моделей...' }
+          : p,
+      ),
+    }));
+
+    try {
+      const resp = await fetch('/api/providers/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: provider.kind,
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+        }),
+      });
+      const data = (await resp.json()) as {
+        ok?: boolean;
+        models?: string[];
+        count?: number;
+        error?: string;
+      };
+
+      if (!resp.ok || !data.ok) {
+        set((s) => ({
+          freeProviders: s.freeProviders.map((p) =>
+            p.id === providerId
+              ? { ...p, status: 'error', lastCheckMessage: data.error || `HTTP ${resp.status}` }
+              : p,
+          ),
+        }));
+        return;
+      }
+
+      const models = data.models && data.models.length > 0 ? data.models : provider.availableModels;
+      set((s) => ({
+        freeProviders: s.freeProviders.map((p) =>
+          p.id === providerId
+            ? {
+                ...p,
+                status: 'connected',
+                availableModels: models,
+                selectedModel: models.includes(p.selectedModel) ? p.selectedModel : models[0],
+                lastCheckMessage: `Доступно моделей: ${data.count ?? models.length}`,
+              }
+            : p,
+        ),
+      }));
+    } catch (err) {
+      set((s) => ({
+        freeProviders: s.freeProviders.map((p) =>
+          p.id === providerId
+            ? {
+                ...p,
+                status: 'error',
+                lastCheckMessage: err instanceof Error ? err.message : 'Сетевая ошибка',
+              }
+            : p,
+        ),
+      }));
+    }
+  },
+
+  toggleSkill: (skillId) =>
+    set((s) => ({
+      skills: s.skills.map((sk) => (sk.id === skillId ? { ...sk, enabled: !sk.enabled } : sk)),
+    })),
+
+  addSkill: ({ title, category, triggerHint, contentMarkdown, source = 'custom' }) =>
+    set((s) => {
+      const slug =
+        title
+          .toLowerCase()
+          .replace(/[^a-zа-я0-9]+/gi, '-')
+          .replace(/^-+|-+$/g, '') || `skill-${Date.now()}`;
+      const created: AgentSkill = {
+        id: `skill-${Date.now()}`,
+        slug,
+        title: title.trim() || 'Новый навык',
+        category,
+        triggerHint: triggerHint.trim() || 'Применяется по контексту задачи',
+        contentMarkdown,
+        enabled: true,
+        usageCount: 1,
+        source,
+        updatedAt: 'Сейчас',
+      };
+      return { skills: [created, ...s.skills] };
+    }),
+
+  updateSkill: (skillId, patch) =>
+    set((s) => ({
+      skills: s.skills.map((sk) =>
+        sk.id === skillId ? { ...sk, ...patch, updatedAt: 'Сейчас' } : sk,
+      ),
+    })),
+
+  deleteSkill: (skillId) =>
+    set((s) => ({
+      skills: s.skills.filter((sk) => sk.id !== skillId),
+    })),
+
+  learnSkillFromMessage: (messageId) => {
+    const state = get();
+    const session = state.sessions.find((s) => s.id === state.activeSessionId);
+    const msg = session?.messages.find((m) => m.id === messageId);
+    if (!msg || msg.skillLearned) return;
+
+    const cleanSnippet = msg.content.replace(/\s+/g, ' ').trim();
+    const title = msg.diff
+      ? `Патч: ${msg.diff.filePath.split('/').pop()}`
+      : msg.command
+        ? `Команда: ${msg.command.command.slice(0, 32)}`
+        : cleanSnippet.slice(0, 42) || 'Автообученный навык';
+
+    const markdown = `---\nname: learned-${Date.now()}\ndescription: Извлечённый навык из сессии "${session?.title ?? 'Kova Studio'}"\n---\n${msg.content.slice(0, 600)}`;
+
+    get().addSkill({
+      title,
+      category: 'Автоматизация',
+      triggerHint: msg.diff?.summary ?? msg.command?.description ?? 'Решение из чата',
+      contentMarkdown: markdown,
+      source: 'learned',
+    });
+
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === s.activeSessionId
+          ? {
+              ...sess,
+              messages: sess.messages.map((m) =>
+                m.id === messageId ? { ...m, skillLearned: true } : m,
+              ),
+            }
+          : sess,
+      ),
+    }));
+  },
+
+  updateMemoryDoc: (key, content) =>
+    set((s) => ({
+      memoryDocs: s.memoryDocs.map((doc) =>
+        doc.key === key ? { ...doc, content, updatedAt: 'Сейчас' } : doc,
+      ),
+    })),
+
+  appendMemoryFact: (fact) =>
+    set((s) => ({
+      memoryDocs: s.memoryDocs.map((doc) =>
+        doc.key === 'memory'
+          ? {
+              ...doc,
+              content: `${doc.content.trim()}\n- ${fact.trim()}`,
+              updatedAt: 'Сейчас',
+            }
+          : doc,
+      ),
+    })),
+
+  updateSubagentConfig: (patch) =>
+    set((s) => ({
+      subagentConfig: { ...s.subagentConfig, ...patch },
+    })),
+
+  launchSubagent: async ({ title, prompt, roleId, providerId }) => {
+    const state = get();
+    const role =
+      state.roles.find((r) => r.id === (roleId ?? state.subagentConfig.defaultRoleId)) ??
+      state.roles[0];
+    const provider =
+      state.freeProviders.find((p) => p.id === (providerId ?? state.subagentConfig.defaultProviderId)) ??
+      state.freeProviders[0];
+    const runId = `sub-${Date.now().toString(36)}`;
+    const taskTitle = title?.trim() || prompt.trim().slice(0, 44) || 'Субагент';
+
+    const initialRun: SubagentRun = {
+      id: runId,
+      title: taskTitle,
+      prompt: prompt.trim(),
+      roleId: role.id,
+      roleName: role.name,
+      providerId: provider.id,
+      providerName: provider.name,
+      modelName: provider.selectedModel,
+      status: 'running',
+      progressPct: 15,
+      resultSummary: `Отправка реального запроса провайдеру ${provider.name}...`,
+      startedAt: nowTime(),
+    };
+
+    const msgId = `msg-sub-${Date.now()}`;
+    set((s) => ({
+      subagentRuns: [initialRun, ...s.subagentRuns].slice(0, 16),
+      sessions: s.sessions.map((sess) =>
+        sess.id === s.activeSessionId
+          ? {
+              ...sess,
+              messages: [
+                ...sess.messages,
+                {
+                  id: msgId,
+                  role: 'assistant',
+                  mode: s.agentMode,
+                  roleName: `Субагент · ${role.name}`,
+                  providerLabel: `${provider.name} · ${provider.selectedModel}`,
+                  timestamp: nowTime(),
+                  content: `Субагент **${taskTitle}** отправлен на \`${provider.selectedModel}\`.`,
+                  subagentRun: initialRun,
+                },
+              ],
+            }
+          : sess,
+      ),
+    }));
+
+    try {
+      const resp = await fetch('/api/providers/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          model: provider.selectedModel,
+          temperature: role.recommendedTemp,
+          messages: [
+            { role: 'system', content: role.systemPrompt },
+            { role: 'user', content: prompt.trim() },
+          ],
+        }),
+      });
+      const json = (await resp.json()) as { ok?: boolean; content?: string; error?: string };
+      if (!resp.ok || !json.ok || !json.content) {
+        throw new Error(json.error || `HTTP ${resp.status}`);
+      }
+
+      set((s) => ({
+        subagentRuns: s.subagentRuns.map((r) =>
+          r.id === runId ? { ...r, status: 'completed', progressPct: 100, resultSummary: json.content! } : r,
+        ),
+        sessions: s.sessions.map((sess) => ({
+          ...sess,
+          messages: sess.messages.map((m) =>
+            m.subagentRun?.id === runId
+              ? {
+                  ...m,
+                  subagentRun: { ...m.subagentRun, status: 'completed', progressPct: 100, resultSummary: json.content! },
+                }
+              : m,
+          ),
+        })),
+      }));
+    } catch (err) {
+      const errText = err instanceof Error ? err.message : 'Провайдер недоступен';
+      set((s) => ({
+        subagentRuns: s.subagentRuns.map((r) =>
+          r.id === runId ? { ...r, status: 'failed', progressPct: 100, resultSummary: `Ошибка: ${errText}` } : r,
+        ),
+        sessions: s.sessions.map((sess) => ({
+          ...sess,
+          messages: sess.messages.map((m) =>
+            m.subagentRun?.id === runId
+              ? {
+                  ...m,
+                  subagentRun: { ...m.subagentRun, status: 'failed', progressPct: 100, resultSummary: `Ошибка: ${errText}` },
+                }
+              : m,
+          ),
+        })),
+      }));
+    }
+  },
+
+  clearCompletedSubagents: () =>
+    set((s) => ({
+      subagentRuns: s.subagentRuns.filter((r) => r.status === 'running' || r.status === 'queued'),
+    })),
+
+  setActiveExecutionEnv: (env) =>
+    set((s) => ({
+      executionEnv: { ...s.executionEnv, activeEnv: env },
+    })),
+
+  updateExecutionEnv: (patch) =>
+    set((s) => ({
+      executionEnv: { ...s.executionEnv, ...patch },
+    })),
+
+  updateGateway: (platform, patch) =>
+    set((s) => ({
+      gateways: s.gateways.map((g) => (g.id === platform ? { ...g, ...patch } : g)),
+    })),
+
+  verifyTelegramGateway: async () => {
+    const tg = get().gateways.find((g) => g.id === 'telegram');
+    if (!tg) return;
+
+    set((s) => ({
+      gateways: s.gateways.map((g) =>
+        g.id === 'telegram'
+          ? { ...g, status: 'checking', statusMessage: 'Проверка токена через api.telegram.org...' }
+          : g,
+      ),
+    }));
+
+    try {
+      const resp = await fetch('/api/gateway/telegram/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken: tg.botToken }),
+      });
+      const data = (await resp.json()) as {
+        ok?: boolean;
+        error?: string;
+        username?: string;
+        firstName?: string;
+        botId?: number;
+      };
+
+      if (!resp.ok || !data.ok) {
+        set((s) => ({
+          gateways: s.gateways.map((g) =>
+            g.id === 'telegram'
+              ? { ...g, status: 'error', statusMessage: data.error || `Ошибка проверки (HTTP ${resp.status})` }
+              : g,
+          ),
+        }));
+        return;
+      }
+
+      set((s) => ({
+        gateways: s.gateways.map((g) =>
+          g.id === 'telegram'
+            ? {
+                ...g,
+                enabled: true,
+                status: 'connected',
+                statusMessage: `Бот подключён: @${data.username ?? data.firstName} (ID ${data.botId})`,
+              }
+            : g,
+        ),
+      }));
+    } catch (err) {
+      set((s) => ({
+        gateways: s.gateways.map((g) =>
+          g.id === 'telegram'
+            ? {
+                ...g,
+                status: 'error',
+                statusMessage: err instanceof Error ? err.message : 'Ошибка соединения с Telegram',
+              }
+            : g,
+        ),
       }));
     }
   },

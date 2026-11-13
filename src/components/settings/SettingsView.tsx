@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Brain,
   Check,
   Copy,
   Cpu,
@@ -10,10 +11,13 @@ import {
   KeyRound,
   Keyboard,
   LayoutGrid,
+  MessageCircle,
   Palette,
   RotateCcw,
+  Server,
   Shield,
   Sliders,
+  Sparkles,
 } from 'lucide-react';
 import { useKovaStore } from '../../store/useKovaStore';
 import type {
@@ -24,6 +28,7 @@ import type {
 } from '../../types/kova';
 import { cn } from '../../utils/cn';
 import { UI_STYLE_META, getUiTokens } from '../../utils/uiStyle';
+import { OpenKovaSettingsSections } from './OpenKovaSettingsSections';
 import { SshGithubView } from './SshGithubView';
 
 interface VisibilityToggleGroup {
@@ -38,7 +43,8 @@ const VISIBILITY_GROUPS: VisibilityToggleGroup[] = [
       { key: 'showLeftSidebar', label: 'Показывать левую панель целиком', hint: 'Скрывает весь левый столбец для расширения чата' },
       { key: 'showProjectTree', label: 'Дерево файлов проекта', hint: 'Навигация по исходникам Rust и TypeScript' },
       { key: 'showLocalModels', label: 'Список локальных моделей GGUF', hint: 'Быстрое переключение активной модели' },
-      { key: 'showSessionHistory', label: 'История чат-сессий', hint: 'Сохранённые задачи и кнопка нового чата' },
+      { key: 'showSessionHistory', label: 'История чат-сессий', hint: 'Сохранённые задачи, поиск и кнопка нового чата' },
+      { key: 'showSkillsMemoryTab', label: 'Вкладка «Навыки и память» (OpenKova)', hint: 'Переключатель SKILL.md и файлов SOUL/MEMORY/USER' },
     ],
   },
   {
@@ -47,7 +53,9 @@ const VISIBILITY_GROUPS: VisibilityToggleGroup[] = [
       { key: 'showRightInspector', label: 'Показывать правый инспектор целиком', hint: 'Расширяет область чтения кода и диффов' },
       { key: 'showMascot', label: 'Анимированный SVG-персонаж', hint: 'Реагирует на генерацию и активную роль' },
       { key: 'showTelemetry', label: 'Статус llama-server.exe и VRAM/RAM', hint: 'Кнопка Стоп/Запуск и индикаторы памяти' },
+      { key: 'showFreeProviderCard', label: 'Селектор бесплатного провайдера ИИ', hint: 'Быстрое переключение llama.cpp / OpenRouter :free / Ollama' },
       { key: 'showInferenceControls', label: 'Параметры генерации (Temp, n_ctx, GPU)', hint: 'Быстрая настройка слоёв и контекста' },
+      { key: 'showSubagentsPanel', label: 'Панель субагентов и делегирования', hint: 'Запуск параллельных воркеров и их карточки в чате' },
       { key: 'showActiveContext', label: 'Активный контекст и чекбоксы файлов', hint: 'Подсчёт токенов по открытым файлам' },
     ],
   },
@@ -55,7 +63,8 @@ const VISIBILITY_GROUPS: VisibilityToggleGroup[] = [
     title: 'Области потока чата (Cline-стиль)',
     items: [
       { key: 'showToolbar', label: 'Верхняя панель инструментов (Plan / Act / Код)', hint: 'Переключение режима и выпадающий список Checkpoints' },
-      { key: 'showTaskBanner', label: 'Панель задачи Cline (токены, прогресс, стиль)', hint: 'Компактная строка состояния текущей задачи' },
+      { key: 'showExecutionEnvBar', label: 'Переключатель среды (Локально / SSH / Docker)', hint: 'Выбор бэкенда выполнения команд в тулбаре' },
+      { key: 'showTaskBanner', label: 'Панель задачи Cline (токены, прогресс, модель)', hint: 'Компактная строка состояния текущей задачи' },
       { key: 'showMessageHeaders', label: 'Заголовки сообщений (модель, роль, режим)', hint: 'Автор, активная роль и бейдж Plan/Act' },
       { key: 'showTimestamps', label: 'Временные метки сообщений', hint: 'Время отправки HH:MM:SS' },
       { key: 'showReadFilesChips', label: 'Блоки прочитанных файлов (read_file)', hint: 'Список файлов, проанализированных агентом' },
@@ -76,6 +85,10 @@ const VISIBILITY_GROUPS: VisibilityToggleGroup[] = [
 
 const SETTINGS_TABS: { id: SettingsSectionId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'ui-chat', label: 'Интерфейс и области чата', icon: LayoutGrid },
+  { id: 'providers', label: 'Бесплатные провайдеры ИИ', icon: Sparkles },
+  { id: 'skills-memory', label: 'Навыки, память и субагенты', icon: Brain },
+  { id: 'execution-env', label: 'Среды: Local / SSH / Docker', icon: Server },
+  { id: 'gateway', label: 'Шлюз мессенджеров', icon: MessageCircle },
   { id: 'engine-paths', label: 'Движок, пути и профили', icon: Sliders },
   { id: 'ssh-github', label: 'Доступ SSH и GitHub', icon: KeyRound },
   { id: 'github-download', label: 'Скачивание с GitHub', icon: Download },
@@ -496,6 +509,13 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {(settingsSection === 'providers' ||
+          settingsSection === 'skills-memory' ||
+          settingsSection === 'execution-env' ||
+          settingsSection === 'gateway') && (
+          <OpenKovaSettingsSections section={settingsSection} />
         )}
 
         {settingsSection === 'ssh-github' && <SshGithubView />}

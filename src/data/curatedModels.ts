@@ -1,4 +1,4 @@
-import type { LocalModel, ModelCatalogItem } from '../types/kova';
+import type { ModelCatalogItem } from '../types/kova';
 
 export const CURATED_GGUF_MODELS: ModelCatalogItem[] = [
   {

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Activity, Cpu, Layers, Power, SlidersHorizontal } from 'lucide-react';
+import React, { useState } from 'react';
+import { Activity, Bot, Cpu, Layers, Play, Power, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { useKovaStore } from '../../store/useKovaStore';
 import type { GpuBackend } from '../../types/kova';
 import { cn } from '../../utils/cn';
@@ -28,6 +28,7 @@ export const RightInspectorPane: React.FC = () => {
     roles,
     activeRoleId,
     setActiveTab,
+    openSettingsSection,
     serverStatus,
     toggleServerPower,
     tokensPerSec,
@@ -35,30 +36,57 @@ export const RightInspectorPane: React.FC = () => {
     ramUsedGb,
     chatVisibility,
     uiStyle,
+    freeProviders,
+    activeProviderId,
+    setActiveProvider,
+    updateFreeProvider,
+    subagentRuns,
+    launchSubagent,
+    clearCompletedSubagents,
+    hardwareProfile,
   } = useKovaStore();
 
+  const [quickSubagentPrompt, setQuickSubagentPrompt] = useState('');
   const tokens = getUiTokens(uiStyle);
   const activeModel = localModels.find((m) => m.id === activeModelId);
   const activeRole = roles.find((r) => r.id === activeRoleId) ?? roles[0];
+  const activeProvider =
+    freeProviders.find((p) => p.id === activeProviderId) ?? freeProviders[0];
+
   const includedTokens =
     files.filter((f) => f.inContext).reduce((acc, f) => acc + f.tokensEstimate, 0) +
     (includeProjectTree ? 180 : 0) +
     (includeTerminalOutput ? 120 : 0);
 
-  const vramPct = Math.min(100, Math.round((vramUsedGb / inferenceSettings.maxVramGb) * 100));
-  const ramPct = Math.min(100, Math.round((ramUsedGb / inferenceSettings.maxRamGb) * 100));
+  const vramPct =
+    inferenceSettings.maxVramGb > 0
+      ? Math.min(100, Math.round((vramUsedGb / inferenceSettings.maxVramGb) * 100))
+      : 0;
+  const ramPct =
+    inferenceSettings.maxRamGb > 0
+      ? Math.min(100, Math.round((ramUsedGb / inferenceSettings.maxRamGb) * 100))
+      : 0;
 
   const statusLabel =
     serverStatus === 'generating'
       ? 'Генерация'
       : serverStatus === 'loading'
         ? 'Загрузка в память'
-        : serverStatus === 'stopped'
-          ? 'Остановлен'
-          : 'Готов (localhost:8080)';
+        : serverStatus === 'error'
+          ? 'Ошибка'
+          : serverStatus === 'stopped'
+            ? 'Остановлен'
+            : 'Модель выбрана';
+
+  const handleLaunchQuickSubagent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickSubagentPrompt.trim()) return;
+    launchSubagent({ prompt: quickSubagentPrompt });
+    setQuickSubagentPrompt('');
+  };
 
   return (
-    <aside className={cn('w-full lg:w-[280px] xl:w-[308px] shrink-0 border-t lg:border-t-0 lg:border-l flex flex-col overflow-y-auto', tokens.sidebarBg)}>
+    <aside className={cn('w-full lg:w-[288px] xl:w-[312px] shrink-0 border-t lg:border-t-0 lg:border-l flex flex-col overflow-y-auto', tokens.sidebarBg)}>
       {/* Section 1: Animated Model Character & Runtime Telemetry */}
       {(chatVisibility.showMascot || chatVisibility.showTelemetry) && (
         <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/90 space-y-3">
@@ -67,7 +95,7 @@ export const RightInspectorPane: React.FC = () => {
               status={serverStatus}
               persona={activeRole.persona}
               roleName={activeRole.name}
-              modelName={activeModel?.name}
+              modelName={activeModel?.name || activeProvider.selectedModel}
               tokensPerSec={tokensPerSec}
               onClick={() => setActiveTab('roles')}
             />
@@ -78,7 +106,7 @@ export const RightInspectorPane: React.FC = () => {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 inline-flex items-center gap-1.5">
                   <Activity className="w-3.5 h-3.5 text-zinc-500" />
-                  Статус llama-server.exe
+                  Локальный рантайм
                 </span>
                 <button
                   type="button"
@@ -105,9 +133,11 @@ export const RightInspectorPane: React.FC = () => {
                       'text-[11px] font-medium shrink-0',
                       serverStatus === 'stopped'
                         ? 'text-zinc-500'
-                        : serverStatus === 'generating'
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-emerald-600 dark:text-emerald-400',
+                        : serverStatus === 'error'
+                          ? 'text-rose-500'
+                          : serverStatus === 'generating'
+                            ? 'text-blue-600 dark:text-blue-400'
+                            : 'text-emerald-600 dark:text-emerald-400',
                     )}
                   >
                     {statusLabel}
@@ -117,7 +147,7 @@ export const RightInspectorPane: React.FC = () => {
                 <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">
                   {inferenceSettings.detectedBackend} · {activeModel?.quant ?? '—'} ·{' '}
                   <span className="tabular-nums">
-                    {tokensPerSec > 0 ? `${tokensPerSec} tok/s` : 'ожидание'}
+                    {tokensPerSec > 0 ? `${tokensPerSec} tok/s` : hardwareProfile ? `${hardwareProfile.cpu.cores} ядер` : 'ожидание'}
                   </span>
                 </div>
 
@@ -125,7 +155,9 @@ export const RightInspectorPane: React.FC = () => {
                   <div className="flex items-center justify-between text-[11px] mb-1">
                     <span className="text-zinc-500 dark:text-zinc-400">VRAM GPU</span>
                     <span className="font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
-                      {serverStatus === 'stopped' ? '0.0' : vramUsedGb} / {inferenceSettings.maxVramGb} GB
+                      {inferenceSettings.maxVramGb > 0
+                        ? `${serverStatus === 'stopped' ? '0.0' : vramUsedGb} / ${inferenceSettings.maxVramGb} GB`
+                        : 'GPU не обнаружен'}
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
@@ -141,21 +173,74 @@ export const RightInspectorPane: React.FC = () => {
 
                 <div>
                   <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="text-zinc-500 dark:text-zinc-400">System RAM (KV + UI)</span>
+                    <span className="text-zinc-500 dark:text-zinc-400">System RAM (ОС)</span>
                     <span className="font-mono tabular-nums text-zinc-800 dark:text-zinc-200">
-                      {serverStatus === 'stopped' ? '0.04' : ramUsedGb} / {inferenceSettings.maxRamGb} GB
+                      {ramUsedGb} / {inferenceSettings.maxRamGb} GB
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
                     <div
                       className="h-full bg-zinc-500 dark:bg-zinc-400 transition-all duration-300"
-                      style={{ width: `${serverStatus === 'stopped' ? 2 : ramPct}%` }}
+                      style={{ width: `${ramPct}%` }}
                     />
                   </div>
                 </div>
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Section 1.5: OpenKova Free Provider Selector */}
+      {chatVisibility.showFreeProviderCard && (
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/90 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 inline-flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Бесплатный провайдер</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => openSettingsSection('providers')}
+              className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+            >
+              Настроить
+            </button>
+          </div>
+
+          <select
+            value={activeProvider.id}
+            onChange={(e) => setActiveProvider(e.target.value)}
+            className={cn(
+              'w-full h-8 px-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500',
+              tokens.inputRadius,
+            )}
+          >
+            {freeProviders.map((prov) => (
+              <option key={prov.id} value={prov.id}>
+                {prov.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={activeProvider.selectedModel}
+            onChange={(e) => updateFreeProvider(activeProvider.id, { selectedModel: e.target.value })}
+            className={cn(
+              'w-full h-8 px-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 font-mono text-[11px] text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-blue-500',
+              tokens.inputRadius,
+            )}
+          >
+            {activeProvider.availableModels.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+
+          <div className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-mono truncate">
+            {activeProvider.badgeText}
+          </div>
         </div>
       )}
 
@@ -252,6 +337,85 @@ export const RightInspectorPane: React.FC = () => {
               className="w-full accent-blue-600 disabled:opacity-40"
             />
           </div>
+        </div>
+      )}
+
+      {/* Section 2.5: OpenKova Subagents Parallel Runner */}
+      {chatVisibility.showSubagentsPanel && (
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/90 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 inline-flex items-center gap-1.5">
+              <Bot className="w-3.5 h-3.5 text-blue-500" />
+              <span>Субагенты</span>
+              <span className="font-mono tabular-nums text-[11px] text-zinc-500">
+                ({subagentRuns.length})
+              </span>
+            </span>
+            {subagentRuns.some((r) => r.status === 'completed') && (
+              <button
+                type="button"
+                onClick={clearCompletedSubagents}
+                className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              >
+                Очистить
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={handleLaunchQuickSubagent} className="flex gap-1.5">
+            <input
+              type="text"
+              value={quickSubagentPrompt}
+              onChange={(e) => setQuickSubagentPrompt(e.target.value)}
+              placeholder="Параллельная подзадача..."
+              className={cn(
+                'flex-1 min-w-0 h-8 px-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-[11.5px] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500',
+                tokens.inputRadius,
+              )}
+            />
+            <button
+              type="submit"
+              disabled={!quickSubagentPrompt.trim()}
+              title="Запустить субагента"
+              className={cn(
+                'h-8 px-2.5 disabled:opacity-45 text-[11px] font-medium inline-flex items-center gap-1 shrink-0',
+                tokens.inputRadius,
+                tokens.accentButton,
+              )}
+            >
+              <Play className="w-3 h-3" />
+            </button>
+          </form>
+
+          {subagentRuns.length > 0 && (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {subagentRuns.slice(0, 4).map((run) => (
+                <div
+                  key={run.id}
+                  className={cn('p-2 border text-[11px] space-y-1', tokens.cardRadius, tokens.cardBg, tokens.cardBorder)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                      {run.title}
+                    </span>
+                    <span
+                      className={cn(
+                        'font-mono tabular-nums shrink-0',
+                        run.status === 'completed'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-blue-600 dark:text-blue-400',
+                      )}
+                    >
+                      {run.progressPct}%
+                    </span>
+                  </div>
+                  <div className="text-[10.5px] text-zinc-500 dark:text-zinc-400 truncate">
+                    {run.roleName} · {run.modelName}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
