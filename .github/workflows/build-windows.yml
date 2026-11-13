@@ -22,7 +22,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -35,7 +34,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install JS dependencies
-        run: npm ci || npm install
+        run: npm install
 
       - name: Generate Tauri Windows icons from PWA asset
         run: npx @tauri-apps/cli@2 icon public/pwa-512x512.png

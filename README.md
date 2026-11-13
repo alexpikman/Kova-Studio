@@ -26,7 +26,20 @@ irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/instal
 
 ---
 
-## Ручная сборка собственного `.exe` / `.msi` (Tauri 2.0)
+## Облачная сборка `.exe` / `.msi` через GitHub Actions
+
+Если вы не хотите устанавливать Rust и Visual Studio C++ Build Tools локально, соберите установщики в облаке:
+
+1. Откройте вкладку **Actions** → [`Build Windows Installer (.exe / .msi)`](https://github.com/alexpikman/Kova-Studio/actions/workflows/build-windows.yml) и нажмите **Run workflow** (либо запушьте изменения в ветку `main` или тег `v*`).
+2. Workflow [`.github/workflows/build-windows.yml`](./.github/workflows/build-windows.yml) на `windows-latest`:
+   - разворачивает **Node.js 22** (без требования `package-lock.json` и без `cache: npm`, установка через `npm install`) и **Rust** (`x86_64-pc-windows-msvc`);
+   - скачивает актуальный `llama-server.exe` (`llama.cpp`) и генерирует иконки приложения;
+   - собирает Tauri 2.0 установщики (`.exe` NSIS и `.msi` WiX), публикует их в [**GitHub Releases**](https://github.com/alexpikman/Kova-Studio/releases) и прикрепляет к запуску как артефакт `kova-studio-windows-installer`.
+3. После завершения сборки запустите команду `irm ... | iex` выше — скрипт автоматически скачает готовый установщик.
+
+---
+
+## Ручная локальная сборка `.exe` / `.msi` (Tauri 2.0)
 
 ### Требования
 - Windows 10 / 11 (x64)
@@ -50,8 +63,6 @@ npm run tauri:build
 Готовые установщики появятся в каталогах:
 - `src-tauri/target/release/bundle/nsis/Kova Studio_0.1.0_x64-setup.exe`
 - `src-tauri/target/release/bundle/msi/Kova Studio_0.1.0_x64_en-US.msi`
-
-Для автоматической публикации `.exe` и `.msi` в GitHub Releases добавлен workflow [`.github/workflows/build-windows.yml`](./.github/workflows/build-windows.yml).
 
 ---
 
