@@ -9,7 +9,7 @@
 Откройте **PowerShell** (или Windows Terminal) и выполните одну команду
 
 ```powershell
-irm https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1 | iex
 ```
 
 **Прямая ссылка на скрипт автоматической установки:**
