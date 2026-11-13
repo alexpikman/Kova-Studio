@@ -5,14 +5,14 @@ import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useKovaStore } from '../../store/useKovaStore';
 import type { AppTab } from '../../types/kova';
 import { cn } from '../../utils/cn';
+import { getUiTokens } from '../../utils/uiStyle';
 
 const NAV_ITEMS: { id: AppTab; label: string }[] = [
   { id: 'workstation', label: 'Рабочая станция' },
   { id: 'models', label: 'Модели GGUF' },
   { id: 'roles', label: 'Роли и пайплайн' },
-  { id: 'ssh-github', label: 'SSH и GitHub' },
-  { id: 'install', label: 'Установка на ПК' },
   { id: 'architecture', label: 'Архитектура' },
+  { id: 'settings', label: 'Настройки' },
 ];
 
 export const TopHeader: React.FC = () => {
@@ -21,7 +21,7 @@ export const TopHeader: React.FC = () => {
     setActiveTab,
     theme,
     toggleTheme,
-    setSettingsOpen,
+    uiStyle,
     trayOpen,
     setTrayOpen,
     serverStatus,
@@ -34,6 +34,7 @@ export const TopHeader: React.FC = () => {
     togglePauseDownload,
   } = useKovaStore();
 
+  const tokens = getUiTokens(uiStyle);
   const { isInstallable, isInstalled, install } = usePWAInstall();
   const trayRef = useRef<HTMLDivElement>(null);
   const activeModel = localModels.find((m) => m.id === activeModelId);
@@ -51,7 +52,7 @@ export const TopHeader: React.FC = () => {
   }, [trayOpen, setTrayOpen]);
 
   return (
-    <header className="h-14 shrink-0 border-b border-zinc-200 dark:border-zinc-800/90 bg-white/85 dark:bg-[#111114]/85 mica-panel px-5 flex items-center justify-between gap-8 relative z-30">
+    <header className={cn('h-14 shrink-0 border-b px-5 flex items-center justify-between gap-8 relative z-30', tokens.headerBg)}>
       {/* Zone 1: Single-element brand wordmark */}
       <button
         type="button"
@@ -244,8 +245,14 @@ export const TopHeader: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setSettingsOpen(true)}
-          className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-xs font-medium transition-colors whitespace-nowrap shrink-0"
+          onClick={() => setActiveTab('settings')}
+          className={cn(
+            'h-9 px-3.5 inline-flex items-center gap-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0',
+            tokens.inputRadius,
+            activeTab === 'settings'
+              ? tokens.accentButton
+              : 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200',
+          )}
         >
           <Settings className="w-3.5 h-3.5" />
           <span>Настройки</span>

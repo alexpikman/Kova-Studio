@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Автоматический установщик Kova Studio (Windows 10/11) без локальной компиляции и без установки MSVC Build Tools.
+    Автоматический установщик Kova Studio (Windows 10/11) без локальной сборки MSVC (нет ошибки 8012).
 .DESCRIPTION
     Запуск одной командой из PowerShell:
     irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1 | iex
@@ -15,7 +15,9 @@ param(
     [string]$GpuBackend = "auto",
     [string]$GitHubToken = $env:GITHUB_TOKEN,
     [string]$ModelUrl = "",
-    [switch]$Silent
+    [switch]$Silent,
+    [switch]$NoWebFallback,
+    [switch]$NoLaunch
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +25,12 @@ $ErrorActionPreference = "Stop"
 
 function Write-Step($msg) {
     Write-Host "`n==> $msg" -ForegroundColor Cyan
+}
+
+function Refresh-UserPath {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = @($machinePath, $userPath) -join ";"
 }
 
 function Invoke-GitHubApi {
@@ -67,7 +75,7 @@ function Install-FromDownloadedPackage {
 
         $installer = Get-ChildItem -Path $ExtractDir -Include "*.exe", "*.msi" -Recurse | Select-Object -First 1
         if (-not $installer) {
-            Write-Warning "Архив распакован в $ExtractDir, но исполняемый .exe/.msi внутри не найден."
+            Write-Warning "Архив распакован в $ExtractDir, но .exe/.msi внутри не найден."
             return $false
         }
 
@@ -85,16 +93,17 @@ function Install-FromDownloadedPackage {
 }
 
 Write-Host "=========================================================" -ForegroundColor Blue
-Write-Host "   Kova Studio — Установка на Windows 10/11 (Cloud-First) " -ForegroundColor Blue
+Write-Host "     Kova Studio — Автоустановка на Windows 10 / 11      " -ForegroundColor Blue
 Write-Host "=========================================================" -ForegroundColor Blue
+Write-Host "Репозиторий: https://github.com/$Repo (ветка: $Branch)" -ForegroundColor Gray
 
-# 1. Создание локальных каталогов (приложение, модели и бинарники)
-Write-Step "1/4. Подготовка каталогов %APPDATA%\KovaStudio\models и %LOCALAPPDATA%\KovaStudio"
+# 1. Создание локальных каталогов
+Write-Step "1/5. Подготовка каталогов %APPDATA%\KovaStudio\models и %LOCALAPPDATA%\KovaStudio"
 $BinDir = "$env:LOCALAPPDATA\KovaStudio\bin"
 New-Item -ItemType Directory -Force -Path $ModelsDir, $BinDir, $AppDir | Out-Null
 
 # 2. Проверка и установка Microsoft Edge WebView2 Runtime
-Write-Step "2/4. Проверка Microsoft Edge WebView2 Runtime"
+Write-Step "2/5. Проверка Microsoft Edge WebView2 Runtime"
 $wv2Reg = @(
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
     "HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -114,8 +123,8 @@ if (-not $hasWv2) {
     Write-Host "WebView2 Runtime уже установлен." -ForegroundColor Green
 }
 
-# 3. Автоопределение GPU, загрузка sidecar llama-server.exe и опциональной модели GGUF
-Write-Step "3/4. Определение GPU и загрузка llama-server.exe (llama.cpp)"
+# 3. Автоопределение GPU и загрузка llama-server.exe (+ опциональной модели)
+Write-Step "3/5. Определение GPU и загрузка llama-server.exe (llama.cpp)"
 $resolvedBackend = $GpuBackend
 if ($resolvedBackend -eq "auto") {
     $nvidia = Get-Command nvidia-smi -ErrorAction SilentlyContinue
@@ -156,12 +165,10 @@ if (-not [string]::IsNullOrWhiteSpace($ModelUrl)) {
     }
 }
 
-# 4. Поиск готового бинарника в GitHub Releases или GitHub Actions Artifacts (без MSVC)
-Write-Step "4/4. Поиск готовой сборки (.exe / .msi / .zip) в GitHub Releases и GitHub Actions ($Repo)"
+# 4. Поиск готового нативного установщика в GitHub Releases или Actions Artifacts (без MSVC)
+Write-Step "4/5. Поиск готового установщика (.exe / .msi) в GitHub Releases и Actions ($Repo)"
 
-$installed = $false
-
-# 4.1 Проверка GitHub Releases (latest -> список всех релизов)
+# 4.1 Проверка GitHub Releases
 try {
     $releasesToCheck = @()
     try {
@@ -186,68 +193,126 @@ try {
             Invoke-WebRequest -Uri $pkgAsset.browser_download_url -OutFile $downloadPath
             $installed = Install-FromDownloadedPackage -FilePath $downloadPath -ExtractDir $AppDir
             if ($installed) {
-                Write-Host "`nГотово! Kova Studio установлено и готово к работе." -ForegroundColor Green
+                Write-Host "`nГотово! Нативное приложение Kova Studio установлено." -ForegroundColor Green
                 Write-Host "Каталог моделей GGUF: $ModelsDir" -ForegroundColor Gray
                 return
             }
         }
     }
 } catch {
-    Write-Host "GitHub Releases недоступны или пусты: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "В GitHub Releases пока нет опубликованных .exe/.msi файлов." -ForegroundColor Yellow
 }
 
-# 4.2 Проверка GitHub Actions Artifacts через GitHub API
-$foundArtifact = $null
+# 4.2 Проверка GitHub Actions Artifacts (если задан GITHUB_TOKEN)
 try {
-    $artifactsResp = Invoke-GitHubApi -Uri "https://api.github.com/repos/$Repo/actions/artifacts?per_page=20"
+    $artifactsResp = Invoke-GitHubApi -Uri "https://api.github.com/repos/$Repo/actions/artifacts?per_page=10"
+    $foundArtifact = $null
     if ($artifactsResp -and $artifactsResp.artifacts) {
         $foundArtifact = $artifactsResp.artifacts |
             Where-Object { -not $_.expired -and ($_.name -match "kova|windows|installer|bundle|exe|msi") } |
             Select-Object -First 1
-        if (-not $foundArtifact) {
-            $foundArtifact = $artifactsResp.artifacts | Where-Object { -not $_.expired } | Select-Object -First 1
-        }
     }
 
-    if ($foundArtifact) {
-        Write-Host "Обнаружен готовый артефакт GitHub Actions: '$($foundArtifact.name)' (сборка #$($foundArtifact.workflow_run.id))." -ForegroundColor Green
-        if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) {
-            $zipOut = "$env:TEMP\$($foundArtifact.name).zip"
-            Write-Host "Скачивание артефакта через GitHub API..." -ForegroundColor Gray
-            Invoke-WebRequest -Uri $foundArtifact.archive_download_url -Headers @{
-                "User-Agent"    = "KovaStudio-Installer"
-                "Authorization" = "Bearer $GitHubToken"
-            } -OutFile $zipOut
-            $installed = Install-FromDownloadedPackage -FilePath $zipOut -ExtractDir $AppDir
-            if ($installed) {
-                Write-Host "`nГотово! Kova Studio установлено из артефакта GitHub Actions." -ForegroundColor Green
-                return
-            }
-        } else {
-            Write-Host "`nGitHub Actions хранит готовый артефакт, но API скачивания zip-артефактов требует токен авторизации." -ForegroundColor Yellow
-            Write-Host "Вы можете скачать готовый .exe/.msi в 1 клик в браузере со страницы сборки:" -ForegroundColor Cyan
-            Write-Host "  https://github.com/$Repo/actions/runs/$($foundArtifact.workflow_run.id)" -ForegroundColor White
-            Write-Host "Либо задайте `$env:GITHUB_TOKEN и повторите запуск этой команды." -ForegroundColor Gray
+    if ($foundArtifact -and (-not [string]::IsNullOrWhiteSpace($GitHubToken))) {
+        $zipOut = "$env:TEMP\$($foundArtifact.name).zip"
+        Write-Host "Найден артефакт GitHub Actions '$($foundArtifact.name)'. Скачивание..." -ForegroundColor Green
+        Invoke-WebRequest -Uri $foundArtifact.archive_download_url -Headers @{
+            "User-Agent"    = "KovaStudio-Installer"
+            "Authorization" = "Bearer $GitHubToken"
+        } -OutFile $zipOut
+        $installed = Install-FromDownloadedPackage -FilePath $zipOut -ExtractDir $AppDir
+        if ($installed) {
+            Write-Host "`nГотово! Kova Studio установлено из артефакта GitHub Actions." -ForegroundColor Green
             return
         }
     }
-} catch {
-    Write-Host "Не удалось получить список артефактов GitHub Actions: $($_.Exception.Message)" -ForegroundColor Yellow
+} catch { }
+
+if ($NoWebFallback) {
+    Write-Host "`nГотовый .exe/.msi не найден. Запустите облачную сборку: https://github.com/$Repo/actions/workflows/build-windows.yml" -ForegroundColor Yellow
+    return
 }
 
-# 5. Понятная инструкция при отсутствии готовых сборок (локальная установка MSVC не выполняется)
-Write-Host "`n=========================================================" -ForegroundColor Yellow
-Write-Host "Готовый установщик (.exe / .msi) в GitHub Releases и Actions пока не найден." -ForegroundColor Yellow
-Write-Host "Локальная сборка невозможна без MSVC. Запустите workflow вручную в GitHub Actions или установите Build Tools вручную по ссылке." -ForegroundColor Red
+# 5. Надёжный запуск без MSVC и без git: скачиваем ZIP-архив ветки + Node.js LTS + ярлык запуска
+Write-Step "5/5. Готовый .exe пока не опубликован — разворачиваем локальный запуск без MSVC (Node + PWA)"
+
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if (-not $nodeCmd) {
+    Write-Host "Node.js не найден. Устанавливаем OpenJS.NodeJS.LTS через winget..." -ForegroundColor Yellow
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if ($wingetCmd) {
+        winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements --silent | Out-Null
+        Refresh-UserPath
+        $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    }
+    if (-not $nodeCmd) {
+        Write-Warning "Установите Node.js 22 LTS вручную (https://nodejs.org/) или запустите облачную сборку .exe в GitHub Actions:"
+        Write-Host "  https://github.com/$Repo/actions/workflows/build-windows.yml" -ForegroundColor White
+        return
+    }
+}
+
+$repoZip = "$env:TEMP\Kova-Studio-$Branch.zip"
+$stageDir = "$env:TEMP\Kova-Studio-stage"
+if (Test-Path $stageDir) { Remove-Item $stageDir -Recurse -Force }
+
+$archiveUrl = "https://github.com/$Repo/archive/refs/heads/$Branch.zip"
+Write-Host "Скачивание исходников из $archiveUrl..." -ForegroundColor Gray
+Invoke-WebRequest -Uri $archiveUrl -OutFile $repoZip
+Expand-Archive -Path $repoZip -DestinationPath $stageDir -Force
+Remove-Item $repoZip -Force -ErrorAction SilentlyContinue
+
+$extractedRoot = Get-ChildItem -Path $stageDir -Directory | Select-Object -First 1
+if (-not $extractedRoot) {
+    throw "Не удалось найти распакованную папку репозитория внутри архива."
+}
+
+$projectDir = Join-Path $AppDir "repo"
+if (Test-Path $projectDir) {
+    Remove-Item $projectDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+Move-Item -Path $extractedRoot.FullName -Destination $projectDir -Force
+Remove-Item $stageDir -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host "Установка зависимостей npm (--legacy-peer-deps)..." -ForegroundColor Gray
+Push-Location $projectDir
+try {
+    & npm install --legacy-peer-deps --no-audit --no-fund
+} finally {
+    Pop-Location
+}
+
+# Создаём удобный запускатель (Рабочий стол + Меню Пуск)
+$launcherCmd = "$env:LOCALAPPDATA\KovaStudio\Start-Kova-Studio.cmd"
+$launcherBody = @"
+@echo off
+title Kova Studio
+cd /d "$projectDir"
+start "" cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:3000"
+npm run dev
+"@
+Set-Content -Path $launcherCmd -Value $launcherBody -Encoding ASCII
+
+$desktopLauncher = Join-Path ([Environment]::GetFolderPath("Desktop")) "Kova Studio.cmd"
+Copy-Item $launcherCmd $desktopLauncher -Force
+
+$startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+if (Test-Path $startMenuDir) {
+    Copy-Item $launcherCmd (Join-Path $startMenuDir "Kova Studio.cmd") -Force
+}
+
+Write-Host "`n=========================================================" -ForegroundColor Green
+Write-Host "  Kova Studio успешно установлен и готов к запуску!" -ForegroundColor Green
+Write-Host "=========================================================" -ForegroundColor Green
+Write-Host "Папка приложения : $projectDir" -ForegroundColor Gray
+Write-Host "Каталог моделей  : $ModelsDir" -ForegroundColor Gray
+Write-Host "Ярлык запуска    : $desktopLauncher" -ForegroundColor Cyan
+Write-Host "Локальный адрес  : http://localhost:3000 (в Edge/Chrome можно нажать 'Установить как приложение PWA')" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Как получить готовое приложение без ошибок MSVC (рекомендуется):" -ForegroundColor Cyan
-Write-Host "  1. Откройте GitHub Actions -> 'Build Windows Installer (.exe / .msi)' и нажмите 'Run workflow':" -ForegroundColor White
-Write-Host "     https://github.com/$Repo/actions/workflows/build-windows.yml" -ForegroundColor Gray
-Write-Host "  2. После завершения (~3-5 мин) скачайте готовый .exe / .msi на странице:" -ForegroundColor White
-Write-Host "     https://github.com/$Repo/releases" -ForegroundColor Gray
-Write-Host "  3. Или повторите запуск этого скрипта — он автоматически скачает появившийся релиз." -ForegroundColor White
-Write-Host ""
-Write-Host "Если вы хотите собирать проект локально (продвинутый режим):" -ForegroundColor Cyan
-Write-Host "  Установите Microsoft Visual Studio C++ Build Tools вручную (workload 'Desktop development with C++'):" -ForegroundColor White
-Write-Host "  https://visualstudio.microsoft.com/visual-cpp-build-tools/" -ForegroundColor Gray
-Write-Host "=========================================================" -ForegroundColor Yellow
+Write-Host "Совет: для нативного .exe/.msi без Node.js запустите облачный workflow (Actions -> Build Windows Installer):" -ForegroundColor Yellow
+Write-Host "  https://github.com/$Repo/actions/workflows/build-windows.yml" -ForegroundColor White
+
+if (-not $NoLaunch) {
+    Write-Host "`nЗапуск Kova Studio (http://localhost:3000)..." -ForegroundColor Cyan
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$launcherCmd`""
+}

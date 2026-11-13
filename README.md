@@ -1,85 +1,81 @@
-# Kova Studio — Автономный Windows ИИ-агент (Tauri 2.0 + llama.cpp)
+# Kova Studio — Автономный Windows ИИ-агент в стиле Cline
 
-Десктопный Cline-подобный ИИ-агент для Windows 10/11 на базе **Tauri 2.0 (Rust + WebView2)** и встроенного sidecar-движка **llama.cpp (`llama-server.exe`)** без зависимости от Ollama и Python.
+**Kova Studio** — это десктопный ИИ-агент для программирования под Windows 10/11 (на базе **Tauri 2.0 + WebView2** и встроенного движка **`llama.cpp` / `llama-server.exe`**), вдохновлённый **Cline** и расширенный настраиваемыми областями интерфейса, ролевой системой и автономным менеджером локальных моделей GGUF — без зависимости от Ollama и Python.
+
+Репозиторий проекта: **[`https://github.com/alexpikman/Kova-Studio`](https://github.com/alexpikman/Kova-Studio)**
 
 ---
 
-## Установка на ПК в один клик (Windows 10/11)
+## Что умеет Kova Studio
 
-Откройте **PowerShell** (или Windows Terminal) от имени администратора и выполните одну команду:
+- **Cline-подобная рабочая станция (`Plan` / `Act` / `Код`)**:
+  - 3-колоночный интерфейс (дерево проекта, локальные модели и история сессий слева; агентский чат с встроенными Git-диффами, терминалом PowerShell и Checkpoints SQLite в центре; анимированный векторный персонаж, телеметрия VRAM/RAM и активный контекст справа).
+  - **Максимальная настройка видимых областей чата (20 переключателей)**: можно включить или отключить боковые панели целиком и по отдельным блокам, верхнюю панель инструментов, баннер задачи Cline, заголовки и таймстемпы сообщений, чипы прочитанных файлов (`read_file`), встроенные диффы (`replace_in_file`), терминальные блоки, бейджи Checkpoints, свитчер ролей и пресеты промптов — плюс 3 готовых пресета (*«Показать всё»*, *«Фокус Cline»*, *«Минимальный чат»*).
+- **3 варианта стиля интерфейса**:
+  1. **Cline / VS Code** — компактная IDE-компоновка с плотными границами и панелью задачи.
+  2. **Windows 11 Mica** — мягкое скругление карточек, полупрозрачные слои и воздушные отступы.
+  3. **Терминал Obsidian** — высококонтрастный моноширинный режим с изумрудными акцентами.
+- **Единый раздел «Настройки»**: все параметры интерфейса, путей к GGUF и `llama-server.exe`, аппаратного профиля GPU/VRAM, ключей OpenSSH (`~/.ssh/config`), авторизации GitHub (SSH / PAT / `gh` CLI) и команд скачивания собраны в одном месте.
+- **Модели GGUF (Hugging Face Hub)**: живой поиск по `apps=llama.cpp`, докачка по HTTP `Range`, проверка `SHA256` и загрузка по прямому URL.
+- **Роли и 6-этапный пайплайн**: Архитектор, Разработчик, Код-ревьюер, Тестировщик и собственный конструктор ролей с библиотекой правил и графом сборки от ТЗ до Checkpoint.
+
+---
+
+## Как скачать и запустить с GitHub (`alexpikman/Kova-Studio`)
+
+### Способ 1 — Автоматическая установка в 1 клик (Windows 10/11, без MSVC)
+
+Откройте **PowerShell** (или Windows Terminal) и выполните:
 
 ```powershell
 irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1 | iex
 ```
 
-**Прямая ссылка на скрипт автоматической установки:**
-- [`scripts/install.ps1`](./scripts/install.ps1) — raw-ссылка для GitHub:
-  `https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1`
-
-### Что делает скрипт автоматической установки
-
-1. Создаёт локальные каталоги хранения весов `%APPDATA%\KovaStudio\models\` и файлов приложения `%LOCALAPPDATA%\KovaStudio\`.
-2. Проверяет наличие **Microsoft Edge WebView2 Runtime** и при необходимости устанавливает его автоматически.
-3. Определяет видеокарту (**NVIDIA CUDA 12.4** через `nvidia-smi` или **Vulkan 1.3** с откатом на CPU AVX2) и скачивает официальный `llama-server.exe` из релизов `ggml-org/llama.cpp`.
-4. Ищет готовый `.exe` (NSIS), `.msi` (WiX) или `.zip` установщик через **GitHub API** в **GitHub Releases** и **GitHub Actions Artifacts**, скачивает и запускает установку без локальной компиляции MSVC/Rust.
-5. Если облачная сборка ещё не запускалась — выводит точную ссылку на запуск workflow в **GitHub Actions** и ссылку на **Microsoft C++ Build Tools** (без аварийного завершения с кодом `8012`).
+**Что сделает скрипт [`scripts/install.ps1`](https://github.com/alexpikman/Kova-Studio/blob/main/scripts/install.ps1):**
+1. Создаст каталоги `%APPDATA%\KovaStudio\models\` и `%LOCALAPPDATA%\KovaStudio\`.
+2. Установит **Microsoft Edge WebView2 Runtime** (если ещё не установлен).
+3. Автоматически определит GPU (**NVIDIA CUDA** / **Vulkan** / **CPU AVX2**) и скачает `llama-server.exe` из официальных релизов `ggml-org/llama.cpp`.
+4. Проверит **[GitHub Releases](https://github.com/alexpikman/Kova-Studio/releases)** и **GitHub Actions** на наличие готового `.exe` (NSIS) или `.msi` (WiX) установщика — и сразу установит его без локальной компиляции MSVC (`8012`).
+5. Если готовый `.exe`/`.msi` релиз ещё не опубликован — скачает архив репозитория с GitHub (без `git` и без `MSVC`), установит зависимости, создаст ярлык **`Kova Studio.cmd`** на рабочем столе и запустит приложение в браузере (`http://localhost:3000`, с поддержкой установки как **PWA**).
 
 ---
 
-## Облачная сборка `.exe` / `.msi` через GitHub Actions
+### Способ 2 — Скачать готовый `.exe` / `.msi` или собрать в облаке GitHub
 
-Если вы не хотите устанавливать Rust и Visual Studio C++ Build Tools локально, соберите установщики в облаке:
-
-1. Откройте вкладку **Actions** → [`Build Windows Installer (.exe / .msi)`](https://github.com/alexpikman/Kova-Studio/actions/workflows/build-windows.yml) и нажмите **Run workflow** (либо запушьте изменения в ветку `main` или тег `v*`).
-2. Workflow [`.github/workflows/build-windows.yml`](./.github/workflows/build-windows.yml) на `windows-latest`:
-   - разворачивает **Node.js 22** (без требования `package-lock.json` и без `cache: npm`, установка через `npm install`) и **Rust** (`x86_64-pc-windows-msvc`);
-   - скачивает актуальный `llama-server.exe` (`llama.cpp`) и генерирует иконки приложения;
-   - собирает Tauri 2.0 установщики (`.exe` NSIS и `.msi` WiX), публикует их в [**GitHub Releases**](https://github.com/alexpikman/Kova-Studio/releases) и прикрепляет к запуску как артефакт `kova-studio-windows-installer`.
-3. После завершения сборки запустите команду `irm ... | iex` выше — скрипт автоматически скачает готовый установщик.
+1. Проверьте вкладку [**Releases**](https://github.com/alexpikman/Kova-Studio/releases) — если там прикреплён файл `*_x64-setup.exe` или `*.msi`, просто скачайте и запустите его.
+2. Чтобы собрать свежий `.exe` и `.msi` в облаке (без установки Rust и Visual Studio на ваш ПК):
+   - Перейдите в [**Actions → Build Windows Installer (.exe / .msi)**](https://github.com/alexpikman/Kova-Studio/actions/workflows/build-windows.yml);
+   - Нажмите **Run workflow**;
+   - Через ~3–5 минут готовые установщики появятся в [**Releases**](https://github.com/alexpikman/Kova-Studio/releases) и в артефакте `kova-studio-windows-installer`.
 
 ---
 
-## Ручная локальная сборка `.exe` / `.msi` (Tauri 2.0)
+### Способ 3 — Скачать исходники вручную (ZIP или `git clone`) и запустить локально
 
-### Требования
-- Windows 10 / 11 (x64)
-- Node.js 20+ / 22+
-- Rust (`rustup`) + Microsoft C++ Build Tools (Desktop development with C++)
-- Бинарник `llama-server.exe`, размещённый как `src-tauri/binaries/llama-server-x86_64-pc-windows-msvc.exe`
+Потребуется только **Node.js 20+ / 22+**:
 
-### Команды сборки
-
-```bash
-# 1. Установка JS-зависимостей
-npm install
-
-# 2. Генерация иконок Windows (.ico / .png) из public/pwa-512x512.png
-npx @tauri-apps/cli@2 icon public/pwa-512x512.png
-
-# 3. Сборка фронтенда и нативного Windows-установщика (.exe и .msi)
-npm run tauri:build
-```
-
-Готовые установщики появятся в каталогах:
-- `src-tauri/target/release/bundle/nsis/Kova Studio_0.1.0_x64-setup.exe`
-- `src-tauri/target/release/bundle/msi/Kova Studio_0.1.0_x64_en-US.msi`
-
----
-
-## Локальный запуск веб-версии и PWA
-
-```bash
-npm install
+```powershell
+git clone https://github.com/alexpikman/Kova-Studio.git
+cd Kova-Studio
+npm install --legacy-peer-deps
 npm run dev
 ```
 
-Приложение откроется на `http://localhost:3000`, поддерживает установку как **PWA** в Microsoft Edge / Google Chrome и включает живой прокси к Hugging Face Hub API (`/api/hf/models`, `/api/hf/model`).
+Или без Git: нажмите на GitHub зелёную кнопку **Code → Download ZIP**, распакуйте архив, откройте PowerShell в папке проекта и выполните `npm install --legacy-peer-deps` и `npm run dev`. Приложение откроется на `http://localhost:3000`.
 
 ---
 
-## Ключевые возможности
+## Ручная сборка нативного `.exe` / `.msi` (продвинутый режим)
 
-- **3-колоночный интерфейс**: дерево проекта, локальные модели и история сессий слева; чат Plan/Act с кастомным Git-диффом, PowerShell-терминалом и Checkpoints в центре; анимированный векторный персонаж, активный контекст и телеметрия VRAM/RAM справа.
-- **Автономный Model Hub**: живой поиск GGUF на Hugging Face (`apps=llama.cpp`), докачка по HTTP `Range`, проверка LFS `SHA256`, загрузка по прямому URL.
-- **Мульти-роли и библиотека правил**: одна GGUF-модель переключается между ролями (Архитектор, Разработчик, Код-ревьюер, Тестировщик + конструктор ролей) с гранулярной матрицей разрешений и библиотекой системных указаний.
-- **Визуальный пайплайн создания проектов**: 6-этапный граф от ТЗ до Checkpoint с назначением ролей на каждый шаг.
+Если вы хотите компилировать Tauri 2.0 локально на Windows:
+1. Установите **Node.js 22**, **Rust (`rustup`)** и **Visual Studio C++ Build Tools** (нагрузка *«Desktop development with C++»*).
+2. Поместите `llama-server.exe` в `src-tauri/binaries/llama-server-x86_64-pc-windows-msvc.exe`.
+3. Выполните:
+
+```powershell
+npm install --legacy-peer-deps
+npx --yes @tauri-apps/cli@2 icon public/pwa-512x512.png
+npm run tauri:build
+```
+
+Готовые установщики будут созданы в `src-tauri/target/release/bundle/nsis/` и `src-tauri/target/release/bundle/msi/`.

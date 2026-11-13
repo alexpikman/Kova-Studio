@@ -23,6 +23,7 @@ import type {
   AppSettings,
   AppTab,
   ChatSession,
+  ChatVisibilitySettings,
   Checkpoint,
   GitHubAccessSettings,
   GpuBackend,
@@ -36,11 +37,13 @@ import type {
   PipelineStage,
   ProjectFile,
   ServerStatus,
+  SettingsSectionId,
   SshAlgorithm,
   SshGlobalSettings,
   SshHostEntry,
   SshKeyProfile,
   TrayNotification,
+  UiStylePreset,
 } from '../types/kova';
 
 interface DownloadQueuePayload {
@@ -58,7 +61,9 @@ interface DownloadQueuePayload {
 interface KovaStore {
   activeTab: AppTab;
   theme: 'dark' | 'light';
-  settingsOpen: boolean;
+  uiStyle: UiStylePreset;
+  settingsSection: SettingsSectionId;
+  chatVisibility: ChatVisibilitySettings;
   trayOpen: boolean;
 
   sessions: ChatSession[];
@@ -101,8 +106,12 @@ interface KovaStore {
   githubAccess: GitHubAccessSettings;
 
   setActiveTab: (tab: AppTab) => void;
+  openSettingsSection: (section: SettingsSectionId) => void;
+  setSettingsSection: (section: SettingsSectionId) => void;
+  setUiStyle: (style: UiStylePreset) => void;
+  updateChatVisibility: (patch: Partial<ChatVisibilitySettings>) => void;
+  applyChatLayoutPreset: (preset: 'full' | 'cline-focus' | 'minimal') => void;
   toggleTheme: () => void;
-  setSettingsOpen: (open: boolean) => void;
   setTrayOpen: (open: boolean) => void;
   setCenterPaneMode: (mode: 'chat' | 'file') => void;
 
@@ -177,10 +186,35 @@ function resolveBackendLabel(pref: GpuBackend): 'CUDA 12.4' | 'Vulkan 1.3' | 'CP
   return 'CUDA 12.4';
 }
 
+const FULL_CHAT_VISIBILITY: ChatVisibilitySettings = {
+  showLeftSidebar: true,
+  showProjectTree: true,
+  showLocalModels: true,
+  showSessionHistory: true,
+  showRightInspector: true,
+  showMascot: true,
+  showTelemetry: true,
+  showInferenceControls: true,
+  showActiveContext: true,
+  showToolbar: true,
+  showTaskBanner: true,
+  showMessageHeaders: true,
+  showTimestamps: true,
+  showReadFilesChips: true,
+  showDiffBlocks: true,
+  showTerminalBlocks: true,
+  showCheckpointBadges: true,
+  showRoleSwitcher: true,
+  showQuickPrompts: true,
+  showComposerStatusRow: true,
+};
+
 export const useKovaStore = create<KovaStore>((set, get) => ({
   activeTab: 'workstation',
   theme: 'dark',
-  settingsOpen: false,
+  uiStyle: 'cline-vscode',
+  settingsSection: 'ui-chat',
+  chatVisibility: FULL_CHAT_VISIBILITY,
   trayOpen: false,
 
   sessions: INITIAL_SESSIONS,
@@ -255,6 +289,48 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  openSettingsSection: (section) => set({ activeTab: 'settings', settingsSection: section }),
+  setSettingsSection: (section) => set({ settingsSection: section }),
+  setUiStyle: (uiStyle) => set({ uiStyle }),
+
+  updateChatVisibility: (patch) =>
+    set((s) => ({
+      chatVisibility: { ...s.chatVisibility, ...patch },
+    })),
+
+  applyChatLayoutPreset: (preset) =>
+    set(() => {
+      if (preset === 'full') {
+        return { chatVisibility: { ...FULL_CHAT_VISIBILITY } };
+      }
+      if (preset === 'cline-focus') {
+        return {
+          chatVisibility: {
+            ...FULL_CHAT_VISIBILITY,
+            showLeftSidebar: false,
+            showRightInspector: false,
+            showQuickPrompts: false,
+          },
+        };
+      }
+      return {
+        chatVisibility: {
+          ...FULL_CHAT_VISIBILITY,
+          showLeftSidebar: false,
+          showRightInspector: false,
+          showToolbar: false,
+          showTaskBanner: false,
+          showMessageHeaders: false,
+          showTimestamps: false,
+          showReadFilesChips: false,
+          showCheckpointBadges: false,
+          showRoleSwitcher: false,
+          showQuickPrompts: false,
+          showComposerStatusRow: false,
+        },
+      };
+    }),
+
   toggleTheme: () =>
     set((state) => {
       const next = state.theme === 'dark' ? 'light' : 'dark';
@@ -264,7 +340,6 @@ export const useKovaStore = create<KovaStore>((set, get) => ({
       return { theme: next };
     }),
 
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
   setTrayOpen: (open) => set({ trayOpen: open }),
   setCenterPaneMode: (mode) => set({ centerPaneMode: mode }),
 

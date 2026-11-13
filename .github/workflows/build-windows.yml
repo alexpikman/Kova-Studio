@@ -34,10 +34,10 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install JS dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Generate Tauri Windows icons from PWA asset
-        run: npx @tauri-apps/cli@2 icon public/pwa-512x512.png
+        run: npx --yes @tauri-apps/cli@2 icon public/pwa-512x512.png
 
       - name: Download llama-server.exe sidecar (llama.cpp)
         shell: pwsh

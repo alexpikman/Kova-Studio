@@ -124,7 +124,7 @@ export const SshGithubView: React.FC = () => {
       : `https://github.com/${githubAccess.repoOwnerSlashName}.git`;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-zinc-50 dark:bg-[#09090B]">
+    <div className="flex-1 min-h-0">
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {/* Header */}
         <div className="pb-5 border-b border-zinc-200 dark:border-zinc-800 flex flex-col md:flex-row md:items-end justify-between gap-4">

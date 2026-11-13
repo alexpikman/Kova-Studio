@@ -1,10 +1,35 @@
-export type AppTab = 'workstation' | 'models' | 'roles' | 'ssh-github' | 'install' | 'architecture';
+export type AppTab = 'workstation' | 'models' | 'roles' | 'architecture' | 'settings';
+export type UiStylePreset = 'cline-vscode' | 'mica-windows' | 'cyber-terminal';
+export type SettingsSectionId = 'ui-chat' | 'engine-paths' | 'ssh-github' | 'github-download';
 export type AgentMode = 'plan' | 'act';
 export type GpuBackend = 'auto' | 'cuda' | 'vulkan' | 'cpu';
 export type ServerStatus = 'ready' | 'generating' | 'loading' | 'stopped' | 'error';
 
 export type RolePersonaKind = 'architect' | 'developer' | 'reviewer' | 'qa' | 'custom';
 export type PermissionPolicy = 'allow' | 'ask' | 'deny';
+
+export interface ChatVisibilitySettings {
+  showLeftSidebar: boolean;
+  showProjectTree: boolean;
+  showLocalModels: boolean;
+  showSessionHistory: boolean;
+  showRightInspector: boolean;
+  showMascot: boolean;
+  showTelemetry: boolean;
+  showInferenceControls: boolean;
+  showActiveContext: boolean;
+  showToolbar: boolean;
+  showTaskBanner: boolean;
+  showMessageHeaders: boolean;
+  showTimestamps: boolean;
+  showReadFilesChips: boolean;
+  showDiffBlocks: boolean;
+  showTerminalBlocks: boolean;
+  showCheckpointBadges: boolean;
+  showRoleSwitcher: boolean;
+  showQuickPrompts: boolean;
+  showComposerStatusRow: boolean;
+}
 
 export type SshAlgorithm = 'ed25519' | 'rsa-4096' | 'ecdsa';
 export type GitHubAuthMethod = 'ssh' | 'pat' | 'gh-cli';

@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { ArchitecturePortalView } from './components/architecture/ArchitecturePortalView';
-import { InstallGuideView } from './components/install/InstallGuideView';
 import { TopHeader } from './components/layout/TopHeader';
 import { ModelHubView } from './components/models/ModelHubView';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { RolesAndPipelineView } from './components/roles/RolesAndPipelineView';
-import { SettingsModal } from './components/settings/SettingsModal';
-import { SshGithubView } from './components/settings/SshGithubView';
+import { SettingsView } from './components/settings/SettingsView';
 import { WorkstationView } from './components/workstation/WorkstationView';
 import { useKovaStore } from './store/useKovaStore';
+import { cn } from './utils/cn';
+import { getUiTokens } from './utils/uiStyle';
 
 export default function App() {
   const {
@@ -19,11 +19,18 @@ export default function App() {
     checkpoints,
     rollbackToCheckpoint,
     theme,
+    uiStyle,
   } = useKovaStore();
+
+  const tokens = getUiTokens(uiStyle);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-ui-style', uiStyle);
+  }, [uiStyle]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -45,17 +52,18 @@ export default function App() {
   }, [agentMode, checkpoints, rollbackToCheckpoint, setActiveTab, setAgentMode]);
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-zinc-50 text-zinc-900 dark:bg-[#09090B] dark:text-zinc-100">
+    <div
+      data-ui-style={uiStyle}
+      className={cn('h-screen w-screen flex flex-col overflow-hidden', tokens.shellBg)}
+    >
       <TopHeader />
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {activeTab === 'workstation' && <WorkstationView />}
         {activeTab === 'models' && <ModelHubView />}
         {activeTab === 'roles' && <RolesAndPipelineView />}
-        {activeTab === 'ssh-github' && <SshGithubView />}
-        {activeTab === 'install' && <InstallGuideView />}
         {activeTab === 'architecture' && <ArchitecturePortalView />}
+        {activeTab === 'settings' && <SettingsView />}
       </main>
-      <SettingsModal />
       <OfflineIndicator />
     </div>
   );
