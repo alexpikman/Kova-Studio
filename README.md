@@ -18,11 +18,11 @@ irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/instal
 
 ### Что делает скрипт автоматической установки
 
-1. Создаёт локальные каталоги хранения весов `%APPDATA%\KovaStudio\models\` и бинарников `%LOCALAPPDATA%\KovaStudio\bin\`.
+1. Создаёт локальные каталоги хранения весов `%APPDATA%\KovaStudio\models\` и файлов приложения `%LOCALAPPDATA%\KovaStudio\`.
 2. Проверяет наличие **Microsoft Edge WebView2 Runtime** и при необходимости устанавливает его автоматически.
 3. Определяет видеокарту (**NVIDIA CUDA 12.4** через `nvidia-smi` или **Vulkan 1.3** с откатом на CPU AVX2) и скачивает официальный `llama-server.exe` из релизов `ggml-org/llama.cpp`.
-4. Проверяет готовый `.exe` (NSIS) или `.msi` (WiX) установщик в **GitHub Releases** репозитория и устанавливает приложение в один клик.
-5. Если готового релиза нет — автоматически устанавливает недостающие зависимости сборки (**Git**, **Node.js LTS**, **Rustup/Cargo**, **Visual Studio C++ Build Tools** через `winget`), клонирует репозиторий, запускает `npx @tauri-apps/cli@2 build` и открывает собранный `.exe`/`.msi` установщик.
+4. Ищет готовый `.exe` (NSIS), `.msi` (WiX) или `.zip` установщик через **GitHub API** в **GitHub Releases** и **GitHub Actions Artifacts**, скачивает и запускает установку без локальной компиляции MSVC/Rust.
+5. Если облачная сборка ещё не запускалась — выводит точную ссылку на запуск workflow в **GitHub Actions** и ссылку на **Microsoft C++ Build Tools** (без аварийного завершения с кодом `8012`).
 
 ---
 

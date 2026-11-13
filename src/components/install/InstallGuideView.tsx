@@ -27,21 +27,21 @@ export const InstallGuideView: React.FC = () => {
   const githubBranch = githubAccess.defaultBranch;
   const setGithubRepo = (val: string) => updateGitHubAccess({ repoOwnerSlashName: val });
   const setGithubBranch = (val: string) => updateGitHubAccess({ defaultBranch: val });
-  const [forceBuildFromSource, setForceBuildFromSource] = useState(false);
+  const [silentInstall, setSilentInstall] = useState(false);
   const [previewTab, setPreviewTab] = useState<PreviewTab>('ps1');
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pwaNotice, setPwaNotice] = useState<string | null>(null);
 
-  const cleanRepo = githubRepo.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '') || 'owner/repo';
+  const cleanRepo = githubRepo.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '') || 'alexpikman/Kova-Studio';
   const cleanBranch = githubBranch.trim() || 'main';
 
   const rawScriptUrl = `https://raw.githubusercontent.com/${cleanRepo}/${cleanBranch}/scripts/install.ps1`;
   const githubReleasesUrl = `https://github.com/${cleanRepo}/releases/latest`;
   const githubRepoUrl = `https://github.com/${cleanRepo}`;
 
-  const oneLineCommand = forceBuildFromSource
-    ? `& ([scriptblock]::Create((irm "${rawScriptUrl}"))) -Repo "${cleanRepo}" -Branch "${cleanBranch}" -BuildFromSource`
+  const oneLineCommand = silentInstall
+    ? `& ([scriptblock]::Create((irm "${rawScriptUrl}"))) -Repo "${cleanRepo}" -Silent`
     : `irm "${rawScriptUrl}" | iex`;
 
   const ps1Script = useMemo(() => {
@@ -53,20 +53,19 @@ export const InstallGuideView: React.FC = () => {
           ? 'vulkan'
           : 'auto';
 
-    return `# Kova Studio — Автоматическая установка и сборка .exe/.msi (Tauri 2.0 + llama.cpp)
+    return `# Kova Studio — Автоматическая установка (без локальной сборки MSVC)
 param(
     [string]$Repo = "${cleanRepo}",
-    [string]$Branch = "${cleanBranch}",
-    [string]$InstallDir = "$env:LOCALAPPDATA\\KovaStudio\\src",
+    [string]$AppDir = "$env:LOCALAPPDATA\\KovaStudio\\app",
     [string]$ModelsDir = "${modelsDir}",
     [string]$GpuBackend = "${backendFlag}",
-    [switch]$BuildFromSource${forceBuildFromSource ? ' = $true' : ''}
+    [string]$GitHubToken = $env:GITHUB_TOKEN
 )
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $BinDir = "$env:LOCALAPPDATA\\KovaStudio\\bin"
-New-Item -ItemType Directory -Force -Path $ModelsDir, $BinDir | Out-Null
+New-Item -ItemType Directory -Force -Path $ModelsDir, $BinDir, $AppDir | Out-Null
 
 # 1. Microsoft Edge WebView2 Runtime
 $wv2 = Get-ItemProperty "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue
@@ -85,55 +84,41 @@ if ($asset) {
     Expand-Archive "$env:TEMP\\llama-win.zip" -DestinationPath $BinDir -Force
 }
 
-# 3. Установка готового .exe/.msi из GitHub Releases (если не выбрана принудительная сборка)
-if (-not $BuildFromSource) {
-    try {
-        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "KovaStudio" }
-        $inst = $rel.assets | Where-Object { $_.name -match "\\.(msi|exe)$" } | Select-Object -First 1
-        if ($inst) {
-            $out = "$env:TEMP\\$($inst.name)"
-            Invoke-WebRequest -Uri $inst.browser_download_url -OutFile $out
-            if ($out.EndsWith(".msi")) { Start-Process msiexec.exe -ArgumentList "/i \`"$out\`" /passive" -Wait }
-            else { Start-Process $out -ArgumentList "/S" -Wait }
-            return
-        }
-    } catch { Write-Host "Релиз не найден, собираем .exe/.msi из исходников..." -ForegroundColor Yellow }
-}
+# 3. Поиск готового .exe / .msi / .zip в GitHub Releases или GitHub Actions Artifacts
+$headers = @{ "User-Agent" = "KovaStudio"; "Accept" = "application/vnd.github+json" }
+if ($GitHubToken) { $headers["Authorization"] = "Bearer $GitHubToken" }
 
-# 4. Установка зависимостей сборки (Git, Node.js LTS, Rust, VS C++ Build Tools)
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) { winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements }
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) { winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements }
-if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { winget install --id Rustlang.Rustup -e --silent --accept-package-agreements --accept-source-agreements }
-$vsWhere = "\${env:ProgramFiles(x86)}\\Microsoft Visual Studio\\Installer\\vswhere.exe"
-$hasMsvc = (Test-Path $vsWhere) -and (& $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
-if (-not $hasMsvc) {
-    $vsOverride = "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --includeRecommended"
-    winget install --id Microsoft.VisualStudio.2022.BuildTools -e --force --accept-package-agreements --accept-source-agreements --override $vsOverride
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Сбой winget ($LASTEXITCODE). Скачайте Build Tools вручную: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+try {
+    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
+    $inst = $rel.assets | Where-Object { $_.name -match "\\.(exe|msi|zip)$" } | Select-Object -First 1
+    if ($inst) {
+        $out = "$env:TEMP\\$($inst.name)"
+        Invoke-WebRequest -Uri $inst.browser_download_url -OutFile $out
+        if ($out.EndsWith(".msi")) { Start-Process msiexec.exe -ArgumentList "/i \`"$out\`" /passive" -Wait }
+        elseif ($out.EndsWith(".zip")) { Expand-Archive $out -DestinationPath $AppDir -Force }
+        else { Start-Process $out }
+        return
     }
-}
-$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+} catch { }
 
-# 5. Клонирование с GitHub и сборка Tauri 2.0 (.exe / .msi)
-$RepoUrl = "https://github.com/$Repo.git"
-if (Test-Path "$InstallDir\\.git") { git -C $InstallDir pull origin $Branch }
-else {
-    git clone --branch $Branch $RepoUrl $InstallDir
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$InstallDir\\package.json")) { throw "Ошибка клонирования $RepoUrl" }
-}
-Push-Location $InstallDir
+# 4. Проверка GitHub Actions Artifacts и понятная инструкция при отсутствии сборки
+try {
+    $arts = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/actions/artifacts?per_page=10" -Headers $headers
+    $art = $arts.artifacts | Where-Object { -not $_.expired } | Select-Object -First 1
+    if ($art -and $GitHubToken) {
+        Invoke-WebRequest -Uri $art.archive_download_url -Headers $headers -OutFile "$env:TEMP\\kova-artifact.zip"
+        Expand-Archive "$env:TEMP\\kova-artifact.zip" -DestinationPath $AppDir -Force
+        return
+    } elseif ($art) {
+        Write-Host "Артефакт найден в GitHub Actions: https://github.com/$Repo/actions/runs/$($art.workflow_run.id)" -ForegroundColor Cyan
+        return
+    }
+} catch { }
 
-$sidecarDir = Join-Path $InstallDir "src-tauri\\binaries"
-New-Item -ItemType Directory -Force -Path $sidecarDir | Out-Null
-$llama = Get-ChildItem -Path $BinDir -Filter "llama-server.exe" -Recurse | Select-Object -First 1
-if ($llama) { Copy-Item $llama.FullName (Join-Path $sidecarDir "llama-server-x86_64-pc-windows-msvc.exe") -Force }
-
-npm install
-npx @tauri-apps/cli@2 icon public/pwa-512x512.png
-npx @tauri-apps/cli@2 build
-Pop-Location`;
-  }, [appSettings.modelsDir, inferenceSettings.gpuBackend, cleanRepo, cleanBranch, forceBuildFromSource]);
+Write-Host "Локальная сборка невозможна без MSVC. Запустите workflow вручную в GitHub Actions или установите Build Tools вручную по ссылке:" -ForegroundColor Red
+Write-Host "  GitHub Actions: https://github.com/$Repo/actions/workflows/build-windows.yml" -ForegroundColor Cyan
+Write-Host "  Build Tools:    https://visualstudio.microsoft.com/visual-cpp-build-tools/" -ForegroundColor Gray`;
+  }, [appSettings.modelsDir, inferenceSettings.gpuBackend, cleanRepo]);
 
   const readmePreview = useMemo(() => {
     return `# Kova Studio — Автономный Windows ИИ-агент (Tauri 2.0 + llama.cpp)
@@ -230,7 +215,7 @@ jobs:
               Сборка .exe/.msi (Tauri 2.0) и автоустановка с GitHub
             </h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1 max-w-3xl">
-              Настройте ссылку на ваш GitHub-репозиторий для автоматического скачивания Kova Studio и установки всех зависимостей Windows (WebView2, Git, Node.js, Rust, MSVC, <span className="font-mono">llama-server.exe</span>) в один клик.
+              Настройте ссылку на ваш GitHub-репозиторий для автоматического скачивания готового установщика <span className="font-mono">.exe/.msi</span> из GitHub Releases или GitHub Actions Artifacts без локальной компиляции MSVC и настройки окружения (<span className="font-mono">WebView2</span>, <span className="font-mono">llama-server.exe</span>).
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -299,11 +284,11 @@ jobs:
 
             <div className="md:col-span-4 flex items-end">
               <label className="w-full h-9 px-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex items-center justify-between gap-2 cursor-pointer text-xs text-zinc-700 dark:text-zinc-300">
-                <span>Принудительно собирать .exe/.msi из исходников</span>
+                <span>Тихий режим установки (-Silent)</span>
                 <input
                   type="checkbox"
-                  checked={forceBuildFromSource}
-                  onChange={(e) => setForceBuildFromSource(e.target.checked)}
+                  checked={silentInstall}
+                  onChange={(e) => setSilentInstall(e.target.checked)}
                   className="accent-blue-600 w-4 h-4"
                 />
               </label>
@@ -409,11 +394,10 @@ jobs:
               </div>
               <h2 className="font-display text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Package className="w-5 h-5 text-emerald-500" />
-                Нативный установщик Windows с авто-зависимостями
+                Готовый установщик Windows из GitHub (без MSVC)
               </h2>
               <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                Проект уже включает конфиг <span className="font-mono">src-tauri/</span> и GitHub Actions workflow. Скрипт{' '}
-                <span className="font-mono">install.ps1</span> сам ставит недостающие компоненты и собирает <span className="font-mono">.exe</span>/<span className="font-mono">.msi</span>.
+                Скрипт <span className="font-mono">install.ps1</span> берёт готовый <span className="font-mono">.exe</span>/<span className="font-mono">.msi</span> из GitHub Releases или GitHub Actions Artifacts (собирается в облаке через <span className="font-mono">build-windows.yml</span>) — без установки MSVC Build Tools.
               </p>
 
               <div className="grid grid-cols-2 gap-2 text-xs pt-1">
@@ -424,9 +408,9 @@ jobs:
                   </div>
                 </div>
                 <div className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950">
-                  <div className="font-medium text-zinc-900 dark:text-zinc-100">Стек сборки (winget)</div>
+                  <div className="font-medium text-zinc-900 dark:text-zinc-100">Источник бинарников</div>
                   <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Git · Node.js LTS · Rust · MSVC Build Tools
+                    GitHub Releases · Actions Artifacts
                   </div>
                 </div>
               </div>
