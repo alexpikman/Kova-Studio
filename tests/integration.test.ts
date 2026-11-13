@@ -268,7 +268,7 @@ test('2. Real streaming download, pause, HTTP Range resume, SHA256 verify, corru
   await jsonReq(`/api/models/local/${encodeURIComponent(badId)}`, { method: 'DELETE' });
 });
 
-test('3. Mandatory folder validation, real Python execution, action log, /undo, and non-destructive project delete', async () => {
+test('3. Mandatory folder validation, real command execution, action log, /undo, and non-destructive project delete', async () => {
   // Attempt to create project without folder -> must fail with 400
   const invalidProj = await jsonReq<{ ok: boolean; error: string }>('/api/projects', {
     method: 'POST',
@@ -319,12 +319,12 @@ test('3. Mandatory folder validation, real Python execution, action log, /undo, 
     assert.equal(writeRes.data.ok, true);
     assert.equal(fs.existsSync(path.join(workdir, 'hello.py')), true);
 
-    // Execute real `python3 hello.py` (and `python hello.py` fallback)
+    // Execute Node.js, which is already required to run Kova Studio.
     const execRes = await jsonReq<{ ok: boolean; stdout: string; exitCode: number }>(
       `/api/projects/${encodeURIComponent(projectId)}/exec`,
       {
         method: 'POST',
-        body: JSON.stringify({ command: 'python hello.py' }),
+        body: JSON.stringify({ command: 'node -e "console.log(\'Hello from Kova\')"' }),
       },
     );
     assert.equal(execRes.status, 200);

@@ -330,7 +330,7 @@ export function recommendModelForHardware(
 
   const vramBudget = hw.freeVramGb > 0 ? hw.freeVramGb : hw.totalVramGb;
   const remainingVramAfterGb = Number((vramBudget - requiredVramGb).toFixed(2));
-  const remainingRamAfterGb = Number((hw.freeRamGb - requiredRamGb).toFixed(2));
+  const remainingRamAfterGb = Number((hw.ram.freeGb - requiredRamGb).toFixed(2));
 
   if (!diskFits) {
     return {
@@ -364,11 +364,11 @@ export function recommendModelForHardware(
   }
 
   // Fits in system RAM (either total free RAM or <= 80% of total RAM if OS caches can be reclaimed)
-  const effectiveRamBudget = Math.max(hw.freeRamGb, Number((hw.ram.totalGb * 0.78).toFixed(2)));
+  const effectiveRamBudget = Math.max(hw.ram.freeGb, Number((hw.ram.totalGb * 0.78).toFixed(2)));
   if (requiredRamGb <= effectiveRamBudget) {
     const lowFreeWarn =
-      requiredRamGb > hw.freeRamGb
-        ? `Сейчас свободно ${hw.freeRamGb} GB RAM (всего ${hw.ram.totalGb} GB) — ОС может сжать файловый кэш.`
+      requiredRamGb > hw.ram.freeGb
+        ? `Сейчас свободно ${hw.ram.freeGb} GB RAM (всего ${hw.ram.totalGb} GB) — ОС может сжать файловый кэш.`
         : undefined;
     return {
       id: model.id,

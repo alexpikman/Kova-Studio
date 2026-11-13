@@ -12,8 +12,9 @@ async function startServer() {
   const app = createApiApp(__dirname);
   const PORT = Number(process.env.PORT) || 3000;
   const httpServer = http.createServer(app);
+  const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProduction) {
     if (process.env.DISABLE_HMR === 'true') {
       app.get('/@vite/client', (_req, res) => {
         res.type('application/javascript').send(
