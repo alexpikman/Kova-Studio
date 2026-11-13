@@ -1,0 +1,201 @@
+import type { ModelDirective, ModelRole, PermissionRule, PipelineStage } from '../types/kova';
+
+export const INITIAL_ROLES: ModelRole[] = [
+  {
+    id: 'role-developer',
+    name: 'Разработчик',
+    persona: 'developer',
+    tagline: 'Точные диффы, сборка Rust/TypeScript, работа в Act',
+    systemPrompt:
+      'Ты — senior full-stack инженер. Предлагай минимальные атомарные unified-диффы, проверяй компиляцию через cargo check / tsc и сохраняй Checkpoint перед записью.',
+    defaultMode: 'act',
+    recommendedTemp: 0.2,
+    accentHex: '#3B82F6',
+  },
+  {
+    id: 'role-architect',
+    name: 'Архитектор',
+    persona: 'architect',
+    tagline: 'Проектирование модулей, границ IPC и планов',
+    systemPrompt:
+      'Ты — системный архитектор Windows/Tauri приложений. Анализируй зависимости, границы модулей, потребление памяти и формулируй пошаговый план без прямого изменения файлов.',
+    defaultMode: 'plan',
+    recommendedTemp: 0.35,
+    accentHex: '#8B5CF6',
+  },
+  {
+    id: 'role-reviewer',
+    name: 'Код-ревьюер',
+    persona: 'reviewer',
+    tagline: 'Поиск утечек, race conditions и уязвимостей',
+    systemPrompt:
+      'Ты — строгий ревьюер безопасности и производительности. Проверяй обработку ошибок в Rust, отсутствие unwrap(), утечки дочерних процессов и права capabilities.',
+    defaultMode: 'plan',
+    recommendedTemp: 0.1,
+    accentHex: '#F59E0B',
+  },
+  {
+    id: 'role-qa',
+    name: 'Тестировщик (QA)',
+    persona: 'qa',
+    tagline: 'Юнит-тесты, диагностика stderr и граничные случаи',
+    systemPrompt:
+      'Ты — QA-инженер автоматизации. Пиши воспроизводимые тесты для крайних случаев, симулируй сбои сети/диска и проверяй exit code команд PowerShell.',
+    defaultMode: 'act',
+    recommendedTemp: 0.15,
+    accentHex: '#10B981',
+  },
+];
+
+export const INITIAL_PERMISSIONS: PermissionRule[] = [
+  {
+    id: 'perm-fs-read',
+    category: 'Файловая система',
+    title: 'Чтение файлов внутри открытого проекта',
+    description: 'Автоматическое чтение исходников для построения контекста промпта.',
+    policy: 'allow',
+  },
+  {
+    id: 'perm-fs-write',
+    category: 'Файловая система',
+    title: 'Запись изменений и применение Git-диффов',
+    description: 'Создание/изменение файлов с обязательным предварительным Checkpoint.',
+    policy: 'ask',
+  },
+  {
+    id: 'perm-shell-exec',
+    category: 'Терминал',
+    title: 'Запуск команд PowerShell / cmd.exe',
+    description: 'Выполнение cargo check, тестов и утилит сборки в рабочей папке.',
+    policy: 'ask',
+  },
+  {
+    id: 'perm-net-hf',
+    category: 'Сеть и модели',
+    title: 'Запросы к Hugging Face Hub API',
+    description: 'Поиск GGUF-весов и проверка LFS SHA256 метаданных.',
+    policy: 'allow',
+  },
+  {
+    id: 'perm-sec-env',
+    category: 'Безопасность',
+    title: 'Чтение и изменение .env / секретов / ключей',
+    description: 'Защита конфиденциальных токенов от попадания в контекст локального или облачного промпта.',
+    policy: 'deny',
+  },
+  {
+    id: 'perm-sec-outside',
+    category: 'Безопасность',
+    title: 'Доступ к каталогам за пределами корня проекта',
+    description: 'Блокировка выхода за границы рабочей папки (Path canonicalization).',
+    policy: 'deny',
+  },
+];
+
+export const INITIAL_DIRECTIVES: ModelDirective[] = [
+  {
+    id: 'dir-rust-safe',
+    category: 'Качество кода',
+    title: 'Rust без unwrap() и паник в IPC',
+    instruction: 'Во всех Tauri-командах возвращай Result<T, String> с осмысленным контекстом ошибки.',
+    enabled: true,
+  },
+  {
+    id: 'dir-ts-strict',
+    category: 'Качество кода',
+    title: 'Строгий TypeScript без any',
+    instruction: 'Явно типизируй все IPC-ответы, Zustand-слайсы и пропсы React-компонентов.',
+    enabled: true,
+  },
+  {
+    id: 'dir-atomic-diff',
+    category: 'Архитектура',
+    title: 'Минимальные атомарные диффы',
+    instruction: 'Не переписывай несвязанные участки файла; меняй только целевые функции.',
+    enabled: true,
+  },
+  {
+    id: 'dir-win-first',
+    category: 'Архитектура',
+    title: 'Windows-first и нулевой Python',
+    instruction: 'Используй нативные механизмы Windows (WebView2, JobObject, PowerShell) без внешних рантаймов.',
+    enabled: true,
+  },
+  {
+    id: 'dir-ru-docs',
+    category: 'Стиль ответа',
+    title: 'Краткие пояснения на русском языке',
+    instruction: 'Поясняй причину правки и возможные риски в 2–4 предложениях перед выводом диффа.',
+    enabled: true,
+  },
+  {
+    id: 'dir-security-hash',
+    category: 'Безопасность',
+    title: 'Обязательная проверка SHA256 для GGUF',
+    instruction: 'При работе с загрузчиком моделей всегда сверяй контрольную сумму перед переименованием .part-файла.',
+    enabled: false,
+  },
+];
+
+export const INITIAL_PIPELINE_STAGES: PipelineStage[] = [
+  {
+    id: 'stage-1',
+    stepNumber: 1,
+    title: 'Идея и ТЗ',
+    shortGoal: 'Формализация требований, ограничений Windows и целевого стека.',
+    assignedRoleId: 'role-architect',
+    mode: 'plan',
+    outputArtifact: 'spec/requirements.md',
+    status: 'idle',
+  },
+  {
+    id: 'stage-2',
+    stepNumber: 2,
+    title: 'План и архитектура',
+    shortGoal: 'Разбиение на модули, контракты Tauri IPC и выбор квантизации.',
+    assignedRoleId: 'role-architect',
+    mode: 'plan',
+    outputArtifact: 'spec/architecture.md',
+    status: 'idle',
+  },
+  {
+    id: 'stage-3',
+    stepNumber: 3,
+    title: 'Каркас проекта',
+    shortGoal: 'Создание структуры папок, Cargo.toml, capabilities и Zustand-стора.',
+    assignedRoleId: 'role-developer',
+    mode: 'act',
+    outputArtifact: 'src-tauri/ + src/stores/',
+    status: 'idle',
+  },
+  {
+    id: 'stage-4',
+    stepNumber: 4,
+    title: 'Код и диффы',
+    shortGoal: 'Реализация ключевых модулей с атомарными правками и подтверждением.',
+    assignedRoleId: 'role-developer',
+    mode: 'act',
+    outputArtifact: 'llama_bridge.rs + DiffViewer.tsx',
+    status: 'idle',
+  },
+  {
+    id: 'stage-5',
+    stepNumber: 5,
+    title: 'Тесты и сборка',
+    shortGoal: 'Запуск cargo check / tsc, проверка stdout/stderr и граничных сценариев.',
+    assignedRoleId: 'role-qa',
+    mode: 'act',
+    outputArtifact: 'PowerShell check log (exit 0)',
+    status: 'idle',
+  },
+  {
+    id: 'stage-6',
+    stepNumber: 6,
+    title: 'Ревью и Checkpoint',
+    shortGoal: 'Аудит безопасности разрешений и фиксация стабильного снапшота.',
+    assignedRoleId: 'role-reviewer',
+    mode: 'plan',
+    outputArtifact: 'SQLite Checkpoint #CP-RELEASE',
+    status: 'idle',
+  },
+];
