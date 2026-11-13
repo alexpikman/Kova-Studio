@@ -6,7 +6,7 @@
 
 ## Установка на ПК в один клик (Windows 10/11)
 
-Откройте **PowerShell** (или Windows Terminal) и выполните одну команду, заменив `<OWNER>/<REPO>` на ваш GitHub-репозиторий:
+Откройте **PowerShell** (или Windows Terminal) и выполните одну команду
 
 ```powershell
 irm https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.ps1 | iex
@@ -14,7 +14,7 @@ irm https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.ps1 | 
 
 **Прямая ссылка на скрипт автоматической установки:**
 - [`scripts/install.ps1`](./scripts/install.ps1) — raw-ссылка для GitHub:
-  `https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.ps1`
+  `https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1`
 
 ### Что делает скрипт автоматической установки
 
