@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Автоматический установщик Kova Studio (Windows 10/11) без локальной сборки MSVC (нет ошибки 8012).
+    Автоматический установщик ONE CORE AI (Windows 10/11) без локальной сборки MSVC (нет ошибки 8012).
 .DESCRIPTION
     Запуск одной командой из PowerShell:
     irm https://raw.githubusercontent.com/alexpikman/Kova-Studio/main/scripts/install.ps1 | iex
@@ -36,7 +36,7 @@ function Refresh-UserPath {
 function Invoke-GitHubApi {
     param([string]$Uri)
     $headers = @{
-        "User-Agent" = "KovaStudio-Installer"
+        "User-Agent" = "ONECOREAI-Installer"
         "Accept"     = "application/vnd.github+json"
     }
     if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) {
@@ -93,7 +93,7 @@ function Install-FromDownloadedPackage {
 }
 
 Write-Host "=========================================================" -ForegroundColor Blue
-Write-Host "     Kova Studio — Автоустановка на Windows 10 / 11      " -ForegroundColor Blue
+Write-Host "     ONE CORE AI — Автоустановка на Windows 10 / 11     " -ForegroundColor Blue
 Write-Host "=========================================================" -ForegroundColor Blue
 Write-Host "Репозиторий: https://github.com/$Repo (ветка: $Branch)" -ForegroundColor Gray
 
@@ -133,7 +133,7 @@ if ($resolvedBackend -eq "auto") {
 Write-Host "Выбранный профиль ускорения: $resolvedBackend" -ForegroundColor Gray
 
 try {
-    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" -Headers @{ "User-Agent" = "KovaStudio-Installer" }
+    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" -Headers @{ "User-Agent" = "ONECOREAI-Installer" }
     $patterns = switch ($resolvedBackend) {
         "cuda" { @("bin-win-cuda-.*x64\.zip$", "bin-win-vulkan-x64\.zip$", "bin-win-cpu-x64\.zip$", "bin-win-avx2-x64\.zip$") }
         "vulkan" { @("bin-win-vulkan-x64\.zip$", "bin-win-cpu-x64\.zip$", "bin-win-avx2-x64\.zip$") }
@@ -199,7 +199,7 @@ try {
             Invoke-WebRequest -Uri $pkgAsset.browser_download_url -OutFile $downloadPath
             $installed = Install-FromDownloadedPackage -FilePath $downloadPath -ExtractDir $AppDir
             if ($installed) {
-                Write-Host "`nГотово! Нативное приложение Kova Studio установлено." -ForegroundColor Green
+                Write-Host "`nГотово! Нативное приложение ONE CORE AI установлено." -ForegroundColor Green
                 Write-Host "Каталог моделей GGUF: $ModelsDir" -ForegroundColor Gray
                 return
             }
@@ -215,7 +215,7 @@ try {
     $foundArtifact = $null
     if ($artifactsResp -and $artifactsResp.artifacts) {
         $foundArtifact = $artifactsResp.artifacts |
-            Where-Object { -not $_.expired -and ($_.name -match "kova|windows|installer|bundle|exe|msi") } |
+            Where-Object { -not $_.expired -and ($_.name -match "one-core|kova|windows|installer|bundle|exe|msi") } |
             Select-Object -First 1
     }
 
@@ -223,12 +223,12 @@ try {
         $zipOut = "$env:TEMP\$($foundArtifact.name).zip"
         Write-Host "Найден артефакт GitHub Actions '$($foundArtifact.name)'. Скачивание..." -ForegroundColor Green
         Invoke-WebRequest -Uri $foundArtifact.archive_download_url -Headers @{
-            "User-Agent"    = "KovaStudio-Installer"
+            "User-Agent"    = "ONECOREAI-Installer"
             "Authorization" = "Bearer $GitHubToken"
         } -OutFile $zipOut
         $installed = Install-FromDownloadedPackage -FilePath $zipOut -ExtractDir $AppDir
         if ($installed) {
-            Write-Host "`nГотово! Kova Studio установлено из артефакта GitHub Actions." -ForegroundColor Green
+            Write-Host "`nГотово! ONE CORE AI установлено из артефакта GitHub Actions." -ForegroundColor Green
             return
         }
     }
@@ -289,26 +289,26 @@ try {
 }
 
 # Создаём удобный запускатель (Рабочий стол + Меню Пуск)
-$launcherCmd = "$env:LOCALAPPDATA\KovaStudio\Start-Kova-Studio.cmd"
+$launcherCmd = "$env:LOCALAPPDATA\KovaStudio\Start-ONE-CORE-AI.cmd"
 $launcherBody = @"
 @echo off
-title Kova Studio
+title ONE CORE AI
 cd /d "$projectDir"
 start "" cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:3000"
 npm run dev
 "@
 Set-Content -Path $launcherCmd -Value $launcherBody -Encoding ASCII
 
-$desktopLauncher = Join-Path ([Environment]::GetFolderPath("Desktop")) "Kova Studio.cmd"
+$desktopLauncher = Join-Path ([Environment]::GetFolderPath("Desktop")) "ONE CORE AI.cmd"
 Copy-Item $launcherCmd $desktopLauncher -Force
 
 $startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 if (Test-Path $startMenuDir) {
-    Copy-Item $launcherCmd (Join-Path $startMenuDir "Kova Studio.cmd") -Force
+    Copy-Item $launcherCmd (Join-Path $startMenuDir "ONE CORE AI.cmd") -Force
 }
 
 Write-Host "`n=========================================================" -ForegroundColor Green
-Write-Host "  Kova Studio успешно установлен и готов к запуску!" -ForegroundColor Green
+Write-Host "  ONE CORE AI успешно установлен и готов к запуску!" -ForegroundColor Green
 Write-Host "=========================================================" -ForegroundColor Green
 Write-Host "Папка приложения : $projectDir" -ForegroundColor Gray
 Write-Host "Каталог моделей  : $ModelsDir" -ForegroundColor Gray
@@ -319,6 +319,6 @@ Write-Host "Совет: для нативного .exe/.msi без Node.js за�
 Write-Host "  https://github.com/$Repo/actions/workflows/build-windows.yml" -ForegroundColor White
 
 if (-not $NoLaunch) {
-    Write-Host "`nЗапуск Kova Studio (http://localhost:3000)..." -ForegroundColor Cyan
+    Write-Host "`nЗапуск ONE CORE AI (http://localhost:3000)..." -ForegroundColor Cyan
     Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$launcherCmd`""
 }

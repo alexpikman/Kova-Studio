@@ -1,8 +1,8 @@
 [package]
 name = "kova-studio"
-version = "0.1.1"
-description = "Kova Studio — автономный Windows ИИ-агент для программирования на базе Tauri 2.0 и llama.cpp"
-authors = ["Kova Studio Contributors"]
+version = "0.2.0"
+description = "ONE CORE AI — локальный Windows ИИ-агент для работы с проектами и моделями"
+authors = ["ONE CORE AI Contributors"]
 edition = "2021"
 
 [lib]

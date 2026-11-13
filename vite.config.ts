@@ -1,11 +1,19 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
 import path from 'path';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  const packageInfo = JSON.parse(
+    readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
+  ) as { version: string };
+
   return {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageInfo.version),
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -14,9 +22,9 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           id: '/',
-          name: 'Kova Studio — Локальный ИИ-агент',
-          short_name: 'KovaStudio',
-          description: 'Автономный Windows ИИ-агент для программирования на базе Tauri 2.0 и llama.cpp.',
+          name: 'ONE CORE AI — локальный ИИ-агент',
+          short_name: 'ONE CORE AI',
+          description: 'Локальный ИИ-агент для работы с проектами, моделями GGUF, файлами, Git и терминалом.',
           theme_color: '#09090B',
           background_color: '#09090B',
           display: 'standalone',

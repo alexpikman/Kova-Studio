@@ -1,6 +1,6 @@
 {
-  "name": "Kova Studio",
-  "description": "Автономный Windows ИИ-агент для программирования на базе Tauri 2.0 и llama.cpp: рабочая станция агента, поиск GGUF на Hugging Face и архитектурный портал.",
+  "name": "ONE CORE AI",
+  "description": "Локальный ИИ-агент для работы с проектами, моделями GGUF, файлами, Git и терминалом.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

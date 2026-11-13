@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { ArchitecturePortalView } from './components/architecture/ArchitecturePortalView';
 import { TopHeader } from './components/layout/TopHeader';
 import { ModelHubView } from './components/models/ModelHubView';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
@@ -20,7 +19,9 @@ export default function App() {
     rollbackToCheckpoint,
     theme,
     uiStyle,
+    hydrated,
     hydrateFromServer,
+    checkForUpdates,
   } = useKovaStore();
 
   const tokens = getUiTokens(uiStyle);
@@ -28,6 +29,10 @@ export default function App() {
   useEffect(() => {
     void hydrateFromServer();
   }, [hydrateFromServer]);
+
+  useEffect(() => {
+    if (hydrated) void checkForUpdates();
+  }, [hydrated, checkForUpdates]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -66,7 +71,6 @@ export default function App() {
         {activeTab === 'workstation' && <WorkstationView />}
         {activeTab === 'models' && <ModelHubView />}
         {activeTab === 'roles' && <RolesAndPipelineView />}
-        {activeTab === 'architecture' && <ArchitecturePortalView />}
         {activeTab === 'settings' && <SettingsView />}
       </main>
       <OfflineIndicator />

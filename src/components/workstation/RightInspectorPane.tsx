@@ -30,6 +30,7 @@ export const RightInspectorPane: React.FC = () => {
     setActiveTab,
     openSettingsSection,
     serverStatus,
+    agentActivity,
     toggleServerPower,
     tokensPerSec,
     vramUsedGb,
@@ -93,6 +94,7 @@ export const RightInspectorPane: React.FC = () => {
           {chatVisibility.showMascot && (
             <ModelMascot
               status={serverStatus}
+              activity={agentActivity}
               persona={activeRole.persona}
               roleName={activeRole.name}
               modelName={activeModel?.name || activeProvider.selectedModel}

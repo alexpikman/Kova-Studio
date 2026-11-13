@@ -10,6 +10,7 @@ import {
   Eye,
   FileText,
   FolderOpen,
+  Globe,
   History,
   Laptop,
   MessageSquare,
@@ -17,6 +18,7 @@ import {
   Save,
   Server,
   ShieldCheck,
+  Terminal,
   SlidersHorizontal,
   UserCheck,
 } from 'lucide-react';
@@ -33,6 +35,7 @@ const QUICK_PROMPTS = [
   '/search function',
   '/git status',
   '/run ls -la',
+  '/web документация TypeScript',
   '/undo',
 ];
 
@@ -275,9 +278,35 @@ export const CenterAgentPane: React.FC = () => {
 
             <button
               type="button"
+              onClick={() => setInput('/web ')}
+              title="Найти и прочитать публичные веб-страницы"
+              className={cn(
+                'h-8 px-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap',
+                tokens.inputRadius,
+              )}
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-500" />
+              <span className="hidden sm:inline">Браузер</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInput('/run ')}
+              title="Подготовить команду для терминала проекта"
+              className={cn(
+                'h-8 px-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap',
+                tokens.inputRadius,
+              )}
+            >
+              <Terminal className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="hidden sm:inline">Терминал</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() =>
                 launchSubagent({
-                  prompt: `Аудит текущего контекста (${activeProject?.name ?? 'Kova Studio'})`,
+                  prompt: `Аудит текущего контекста (${activeProject?.name ?? 'ONE CORE AI'})`,
                 })
               }
               title="Запустить параллельного субагента"
@@ -502,7 +531,7 @@ export const CenterAgentPane: React.FC = () => {
             <div className={cn('max-w-2xl mx-auto my-8 p-6 border', tokens.cardRadius, tokens.cardBg, tokens.cardBorder)}>
               <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
                 <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>Kova Studio · Реальная работа с файлами, Git и терминалом</span>
+                <span>ONE CORE AI · Реальная работа с файлами, Git и терминалом</span>
               </div>
               <h2 className="font-display text-lg font-semibold text-zinc-900 dark:text-zinc-100">
                 {activeProject
@@ -546,19 +575,41 @@ export const CenterAgentPane: React.FC = () => {
           {activeSession?.messages.map((msg) => (
             <div
               key={msg.id}
+              aria-label={msg.role === 'user' ? 'Сообщение пользователя' : 'Ответ агента'}
               className={cn(
-                'max-w-3xl mx-auto border p-4',
+                'max-w-3xl mx-auto border border-l-[3px] p-4 shadow-sm',
                 tokens.cardRadius,
                 msg.role === 'user' ? tokens.userBubbleBg : tokens.assistantBubbleBg,
+                msg.role === 'user' ? 'border-l-blue-500' : 'border-l-violet-500',
               )}
             >
-              {(chatVisibility.showMessageHeaders || chatVisibility.showTimestamps) && (
-                <div className="flex items-center justify-between gap-2 mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  {chatVisibility.showMessageHeaders ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {msg.role === 'user' ? 'Вы' : msg.providerLabel ?? activeModel?.name ?? 'Агент проекта'}
-                      </span>
+              <div className="flex items-center justify-between gap-2 mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 font-semibold',
+                      msg.role === 'user'
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-violet-700 dark:text-violet-300',
+                    )}
+                  >
+                    {msg.role === 'user' ? (
+                      <UserCheck className="w-3.5 h-3.5" />
+                    ) : (
+                      <Bot className="w-3.5 h-3.5" />
+                    )}
+                    {msg.role === 'user' ? 'Вы' : 'Кова'}
+                  </span>
+                  {chatVisibility.showMessageHeaders && (
+                    <>
+                      {msg.role === 'assistant' && (
+                        <>
+                          <span>·</span>
+                          <span className="text-zinc-600 dark:text-zinc-300">
+                            {msg.providerLabel ?? activeModel?.name ?? 'Агент проекта'}
+                          </span>
+                        </>
+                      )}
                       {msg.role === 'assistant' && msg.roleName && (
                         <>
                           <span>·</span>
@@ -577,16 +628,13 @@ export const CenterAgentPane: React.FC = () => {
                           </span>
                         </>
                       )}
-                    </div>
-                  ) : (
-                    <span />
-                  )}
-
-                  {chatVisibility.showTimestamps && (
-                    <span className="font-mono tabular-nums text-[11px]">{msg.timestamp}</span>
+                    </>
                   )}
                 </div>
-              )}
+                {chatVisibility.showTimestamps && (
+                  <span className="font-mono tabular-nums text-[11px]">{msg.timestamp}</span>
+                )}
+              </div>
 
               {chatVisibility.showReadFilesChips && msg.readFiles && msg.readFiles.length > 0 && (
                 <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-zinc-500 dark:text-zinc-400">
@@ -602,6 +650,27 @@ export const CenterAgentPane: React.FC = () => {
               )}
 
               <MarkdownLite content={msg.content} />
+
+              {msg.webSources && msg.webSources.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-zinc-200/70 dark:border-zinc-800/70">
+                  <div className="mb-1.5 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+                    Источники
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {msg.webSources.map((source) => (
+                      <a
+                        key={source.url}
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
+                      >
+                        {source.title || source.url}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {msg.subagentRun && chatVisibility.showSubagentsPanel && (
                 <div className={cn('mt-3 p-3 border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/60 space-y-1.5', tokens.cardRadius)}>

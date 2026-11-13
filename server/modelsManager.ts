@@ -205,7 +205,7 @@ async function executeHttpDownload(id: string): Promise<void> {
 
   try {
     const headers: Record<string, string> = {
-      'User-Agent': 'KovaStudio/1.0',
+      'User-Agent': 'ONECOREAI/1.0',
     };
     if (existingOffset > 0) {
       headers.Range = `bytes=${existingOffset}-`;

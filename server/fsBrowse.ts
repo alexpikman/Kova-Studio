@@ -142,7 +142,7 @@ export async function tryNativeFolderPicker(): Promise<{
     if (platform === 'darwin') {
       const { stdout } = await execFileAsync(
         'osascript',
-        ['-e', 'POSIX path of (choose folder with prompt "Выберите папку проекта Kova Studio")'],
+        ['-e', 'POSIX path of (choose folder with prompt "Выберите папку проекта ONE CORE AI")'],
         { timeout: 60000 },
       );
       return { supported: true, selectedPath: stdout.trim() };
@@ -164,7 +164,7 @@ export async function tryNativeFolderPicker(): Promise<{
       }
       const { stdout } = await execFileAsync(
         'zenity',
-        ['--file-selection', '--directory', '--title=Выберите папку проекта Kova Studio'],
+        ['--file-selection', '--directory', '--title=Выберите папку проекта ONE CORE AI'],
         { timeout: 60000 },
       );
       const p = stdout.trim();
